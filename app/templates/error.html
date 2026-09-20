@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% block content %}<section class="card error-card"><p class="eyebrow">REQUEST COULD NOT BE COMPLETED</p><h1>{{ error.code }}</h1><h2>{{ error.name }}</h2><p>{{ error.description }}</p><a class="download" href="{{ url_for('dashboard') }}">Return to vault →</a></section>{% endblock %}
