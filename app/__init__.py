@@ -29,8 +29,29 @@ MAX_FILE = 5 * 1024 * 1024
 QUOTA = 50 * 1024 * 1024
 
 
+def _find_clamscan():
+    """Auto-detect ClamAV on common installation paths when CLAMSCAN_PATH is not set."""
+    explicit = os.getenv('CLAMSCAN_PATH', '')
+    if explicit:
+        return explicit
+    app_dir = Path(__file__).resolve().parent.parent
+    portable_dirs = sorted(app_dir.glob('.clamav/clamav-*'), reverse=True)
+    candidates = [str(d / 'clamscan.exe') for d in portable_dirs]
+    candidates += [
+        os.path.join(os.environ.get('ProgramFiles', ''), 'ClamAV', 'clamscan.exe'),
+        os.path.join(os.environ.get('ProgramFiles(x86)', ''), 'ClamAV', 'clamscan.exe'),
+        '/usr/bin/clamscan',
+        '/usr/local/bin/clamscan',
+    ]
+    for path in candidates:
+        if path and os.path.isfile(path):
+            return path
+    return ''
+
+
 def create_app(test_config=None):
     app = Flask(__name__, instance_relative_config=True)
+    detected_scanner = _find_clamscan()
     app.config.from_mapping(
         MAX_CONTENT_LENGTH=MAX_FILE + 128 * 1024,
         MAX_FORM_MEMORY_SIZE=64 * 1024,
@@ -39,11 +60,13 @@ def create_app(test_config=None):
         SESSION_COOKIE_SAMESITE='Lax',
         SESSION_COOKIE_SECURE=os.getenv('APP_HTTPS') == '1',
         PERMANENT_SESSION_LIFETIME=timedelta(minutes=30),
-        SCANNER=os.getenv('CLAMSCAN_PATH', ''),
+        SCANNER=detected_scanner,
         REQUIRE_SCAN=os.getenv('REQUIRE_SCAN') == '1',
         DATA_DIR=os.getenv('DATA_DIR', app.instance_path),
         RATELIMIT_STORAGE_URI=os.getenv('RATELIMIT_STORAGE_URI', 'memory://'),
     )
+    if detected_scanner and not os.getenv('CLAMSCAN_PATH'):
+        print(f'[SecureVault] Auto-detected ClamAV at: {detected_scanner}')
     if test_config:
         app.config.update(test_config)
     root = Path(app.config['DATA_DIR']).resolve()
@@ -376,6 +399,16 @@ def create_app(test_config=None):
             mime = 'image/png' if expected == 'PNG' else 'image/jpeg'
         return name, raw, mime
 
+    def _scanner_db_args():
+        """Build database arguments for portable ClamAV installs."""
+        scanner = app.config['SCANNER']
+        if not scanner:
+            return []
+        db_dir = Path(scanner).parent / 'database'
+        if db_dir.is_dir() and any(db_dir.glob('*.c?d')):
+            return [f'--database={db_dir}']
+        return []
+
     def scan(raw):
         scanner = app.config['SCANNER']
         if not scanner:
@@ -387,17 +420,43 @@ def create_app(test_config=None):
             with tempfile.NamedTemporaryFile(dir=root, suffix='.scan', delete=False) as stream:
                 path = Path(stream.name)
                 stream.write(raw)
-            result = subprocess.run([scanner, '--no-summary', str(path)], capture_output=True, timeout=30)
+            cmd = [scanner, '--no-summary'] + _scanner_db_args() + [str(path)]
+            result = subprocess.run(cmd, capture_output=True, timeout=30)
             if result.returncode == 1:
-                raise ValueError('Antivirus rejected this file.')
+                # Extract the threat name from ClamAV output
+                stdout = result.stdout.decode('utf-8', errors='replace').strip()
+                threat = 'unknown threat'
+                if 'FOUND' in stdout:
+                    # ClamAV output format: /path/to/file: ThreatName FOUND
+                    parts = stdout.split(':')
+                    if len(parts) >= 2:
+                        threat = parts[-1].replace('FOUND', '').strip()
+                raise ValueError(f'Antivirus detected a threat: {threat}. File rejected.')
             if result.returncode != 0:
-                raise ValueError('Antivirus is unavailable. Upload rejected.')
-            return 'ClamAV passed'
-        except (OSError, subprocess.TimeoutExpired):
-            raise ValueError('Antivirus is unavailable. Upload rejected.') from None
+                stderr = result.stderr.decode('utf-8', errors='replace').strip()
+                app.logger.warning('ClamAV error (exit %d): %s', result.returncode, stderr[:200])
+                raise ValueError('Antivirus scanner error. Upload rejected for safety.')
+            return 'ClamAV: clean'
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            app.logger.warning('ClamAV unavailable: %s', exc)
+            raise ValueError('Antivirus scanner is unavailable. Upload rejected for safety.') from None
         finally:
             if path:
                 path.unlink(missing_ok=True)
+
+    def _check_scanner_health():
+        """Check if ClamAV is reachable and has valid virus databases."""
+        scanner = app.config['SCANNER']
+        if not scanner:
+            return {'available': False, 'reason': 'No scanner configured'}
+        try:
+            result = subprocess.run([scanner, '--version'], capture_output=True, timeout=10)
+            if result.returncode == 0:
+                version = result.stdout.decode('utf-8', errors='replace').strip()
+                return {'available': True, 'engine': version}
+            return {'available': False, 'reason': f'Exit code {result.returncode}'}
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return {'available': False, 'reason': str(exc)}
 
     @app.post('/upload')
     @login_required
@@ -599,7 +658,12 @@ def create_app(test_config=None):
     @limiter.exempt
     def health():
         db().execute('SELECT 1').fetchone()
-        return {'status': 'ok'}
+        scanner_info = _check_scanner_health()
+        return {
+            'status': 'ok',
+            'antivirus': scanner_info,
+            'require_scan': app.config['REQUIRE_SCAN'],
+        }
 
     for status in (400, 403, 404, 409, 413, 429, 500):
         def error_page(error):

@@ -8,3 +8,4 @@ __pycache__/
 docs/rendered/
 .test-run*/
 pytest-cache-files-*/
+.clamav/
