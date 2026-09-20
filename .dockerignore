@@ -1,0 +1,9 @@
+.git
+.runtime
+.venv
+instance
+docs
+tests
+.test-run*
+__pycache__
+.env
