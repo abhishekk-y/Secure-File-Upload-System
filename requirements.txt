@@ -7,3 +7,9 @@ cryptography==50.0.1
 pyotp==2.10.0
 qrcode==8.2
 opencv-python-headless==4.14.0.94
+# Phase 2: Advanced Security Engines
+pypdf>=6.0.0
+defusedxml>=0.7.1
+nh3>=0.3.0
+oletools>=0.60
+pefile>=2024.0.0
