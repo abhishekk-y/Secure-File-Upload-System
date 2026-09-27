@@ -12,4 +12,4 @@ pypdf>=6.0.0
 defusedxml>=0.7.1
 nh3>=0.3.0
 oletools>=0.60
-pefile>=2024.0.0
+pefile>=2024.8.26
