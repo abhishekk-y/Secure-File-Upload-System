@@ -40,12 +40,12 @@ Read [README.md](README.md) first. Then use [SECURITY.md](docs/SECURITY.md), [SY
 - Fernet is server-side encryption at rest; the server retains the key. The app does not provide end-to-end encryption.
 - Process separation has deadlines and input/output bounds but is not a hardened OS sandbox. PDF OCR rendering remains in the application process.
 - Commercial Deep CDR, multiple commercial antivirus engines and dynamic sandbox execution are not included.
-- Tesseract is not installed in the current Windows development environment. The OCR-to-DLP handoff is covered with controlled test responses; native OCR execution needs its own acceptance check when Tesseract is present.
+- Tesseract 5.5.3 and the English model were checked locally from `.runtime/tesseract`; that runtime is ignored by Git. On a fresh Windows checkout, run `scripts/setup_tesseract_local.ps1`. The synthetic OCR fixture reached DLP and was blocked without persisting matched text.
 - ClamAV 1.5.4 and its local signatures were used for a benign fixture and custom local-rule fixture. The EICAR scanner result was inconclusive (exit code 2) and must not be represented as passed.
 
 ## Latest verification snapshot
 
-- Full regression suite: 93 passed, zero failures, in 65.70 seconds on 3 November 2026.
+- Full regression suite: 94 passed, zero failures, in 78.66 seconds on 3 November 2026.
 - Bandit: zero medium/high findings; seven low findings, including expected argument-list subprocess use with timeouts and an XML serializer import. Uploaded XML is parsed using `defusedxml`.
 - Full dependency audit after the Pillow update: no known advisories in the resolved dependency graph at audit time. Use the committed JSON summary; rerun before a future release.
 - Do not convert any of these checks into claims that the project is “unhackable,” certified, or independently penetration-tested.

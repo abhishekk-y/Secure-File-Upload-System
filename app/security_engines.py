@@ -9,6 +9,7 @@ import json
 import math
 import re
 import subprocess
+import shutil
 import sys
 import tempfile
 import threading
@@ -23,6 +24,27 @@ MIMES = {
 }
 RECONSTRUCT = {'pdf','docx','csv','html','htm','xml','svg'}
 RULE_DIR = Path(os.getenv('YARA_RULES_DIR', Path(__file__).with_name('rules')))
+
+
+def _find_tesseract():
+    """Find a local Tesseract binary without requiring a global PATH edit."""
+    explicit = os.getenv('TESSERACT_CMD')
+    if explicit:
+        return explicit
+    executable = 'tesseract.exe' if os.name == 'nt' else 'tesseract'
+    found = shutil.which(executable)
+    if found:
+        return found
+    if os.name == 'nt':
+        candidates = [
+            Path(os.environ.get('ProgramFiles', 'C:/Program Files')) / 'Tesseract-OCR' / executable,
+            Path(os.environ.get('LOCALAPPDATA', '')) / 'Programs' / 'Tesseract-OCR' / executable,
+            Path(__file__).resolve().parents[1] / '.runtime' / 'tesseract' / executable,
+        ]
+        for candidate in candidates:
+            if candidate.is_file():
+                return str(candidate)
+    return executable
 
 
 def yara_scan(raw):
@@ -49,7 +71,7 @@ def ocr_text(raw, mime, root):
     """OCR decoded raster or rendered PDF pages with bounded Tesseract CLI calls."""
     if mime not in ('image/png','image/jpeg','application/pdf'):
         return '', {'status':'not_applicable','characters':0,'detail':'OCR is available for PNG, JPEG and PDF.'}
-    executable = os.getenv('TESSERACT_CMD') or ('tesseract.exe' if os.name == 'nt' else 'tesseract')
+    executable = _find_tesseract()
     try:
         import pypdfium2 as pdfium
         from PIL import Image
@@ -75,7 +97,11 @@ def ocr_text(raw, mime, root):
             for index,page in enumerate(pages):
                 source=folder/f'{index}.png'; page.save(source,format='PNG')
                 try:
-                    result=subprocess.run([executable,str(source), 'stdout','-l',os.getenv('OCR_LANGUAGE','eng'),'--psm','3'],
+                    arguments=[executable,str(source), 'stdout','-l',os.getenv('OCR_LANGUAGE','eng'),'--psm','3']
+                    local_data=Path(executable).resolve().parent/'tessdata'
+                    if local_data.is_dir():
+                        arguments.extend(['--tessdata-dir',str(local_data)])
+                    result=subprocess.run(arguments,
                                           capture_output=True,timeout=3,check=False)
                 except (OSError,subprocess.TimeoutExpired):
                     raise RuntimeError('OCR engine unavailable or timed out') from None

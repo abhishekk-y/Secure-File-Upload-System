@@ -4,7 +4,7 @@ This record reports evidence from the tested local source version. It is not a s
 
 ## Latest regression execution
 
-On **3 November 2026**, the full pytest suite completed with **93 passed, 0 failed** in **65.70 seconds**. The test cases cover account and session controls, CSRF, file allowlists, parser bounds, document reconstruction, image normalization, DLP decisions, YARA-X matches, scanner failure handling, encrypted storage, authorization, integrity, single-use sharing and OpenCV document processing.
+On **3 November 2026**, the full pytest suite completed with **94 passed, 0 failed** in **78.66 seconds**. The test cases cover account and session controls, CSRF, file allowlists, parser bounds, document reconstruction, image normalization, DLP decisions, YARA-X matches, scanner failure handling, encrypted storage, authorization, integrity, single-use sharing, OpenCV document processing and Tesseract path discovery.
 
 Repeat the suite from the repository root:
 
@@ -19,13 +19,13 @@ The GitHub Actions workflow runs pytest, Bandit and pip-audit on pushes and pull
 
 | Check | Result | Scope and boundary |
 | --- | --- | --- |
-| Functional/security regression tests | 93 passed, 0 failed | Defined automated cases; not exhaustive testing |
+| Functional/security regression tests | 94 passed, 0 failed | Defined automated cases; not exhaustive testing |
 | Bandit static analysis | 0 high, 0 medium, 7 low findings | Low findings are subprocess import/call alerts and the XML output serializer import; untrusted XML input uses `defusedxml`; subprocesses use argument arrays and timeouts |
 | pip-audit | No known advisories in the resolved dependency graph on 2 November 2026, after Pillow was updated to 13.0.0 | Advisories can be published later; rerun before a new release |
 | ClamAV benign fixture | Passed with local ClamAV 1.5.4 and current-at-test signature database | Shows that the scanner ran on the fixture, not broad detection quality |
 | ClamAV custom local signature fixture | Expected local rule signature detected | Controlled local integration fixture, not a commercial threat feed |
 | EICAR scanner fixture | Inconclusive; ClamAV returned exit code 2 | Not counted as a successful detection check; the application rejects scanner errors |
-| OCR-to-DLP wiring | Automated controlled-response test passed | Native Tesseract is not installed on the Windows development workstation; do not claim the executable ran there |
+| OCR-to-DLP wiring | Native Tesseract 5.5.3 recognized the synthetic OCR fixture; the real output reached DLP and was blocked without storing the matched value | One synthetic English image only; this does not measure OCR accuracy on varied documents |
 | Browser review | Login, vault, upload dialog, report, MFA/session controls, sharing and receiving pages were observed | Screenshots are interface examples; current security verdicts must be demonstrated with fresh uploads |
 
 ## Requirements-to-test matrix
@@ -50,7 +50,7 @@ Bandit reports seven low-severity findings and no medium/high findings. The subp
 
 ## Known unverified areas
 
-- Native Tesseract execution on the current workstation; the DLP handoff is tested using a controlled OCR response.
+- OCR accuracy on varied scans, handwriting, low-contrast pages and languages other than English.
 - The EICAR ClamAV check, which returned an error instead of a detection result.
 - External penetration testing, formal accessibility certification, load testing and multi-instance behavior.
 - Commercial Deep CDR, multiple commercial antivirus engines and dynamic sandbox execution; none are included.

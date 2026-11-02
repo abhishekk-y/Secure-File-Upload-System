@@ -49,7 +49,7 @@ Ordinary upload forms often trust a filename or browser-provided content type. S
 | Document reconstruction | Rebuilds supported document formats into reduced-feature output | Some original formatting, metadata and interactive content are intentionally lost |
 | Antivirus | Invokes local ClamAV for original and changed content with a timeout | One engine only; scanner errors fail closed |
 | Local YARA-X | Compiles reviewed local rules and checks original upload bytes | Small local ruleset; complements antivirus and is not a full malware database |
-| OCR-assisted DLP | Uses local Tesseract text from images/PDF pages in existing text checks | OCR can miss or misread text; missing engine is reported as unavailable |
+| OCR-assisted DLP | Uses local Tesseract text from images/PDF pages in existing text checks | OCR can miss or misread text; the local check covered one synthetic English page |
 | Sensitive-data policy | Rejects likely credential findings and blocks sharing for selected sensitive-data findings | Pattern checks are limited and cannot identify every sensitive value |
 | Local hash policy | Operator-managed SHA-256 denylist can flag known blocked files | An unmatched hash does not mean globally trusted or malware-free |
 | Private file storage | Random internal file IDs, Fernet authenticated encryption and SHA-256 integrity verification | Server-side encryption at rest, not end-to-end encryption |
@@ -174,7 +174,7 @@ Open `http://127.0.0.1:5000`, create an account and use a synthetic file from `s
 
 ClamAV and Tesseract are native programs installed separately from Python packages. The repository includes `scripts/setup_clamav.ps1` for the Windows ClamAV demonstration setup. Check ClamAV's signature database and the per-file report; a configured binary alone does not prove a successful scan. ClamAV is required by default, so an absent or failing scanner blocks uploads.
 
-Install Tesseract with English language data to enable OCR. On Windows, use the [Tesseract project’s recommended UB Mannheim build](https://github.com/UB-Mannheim/tesseract/wiki); on Ubuntu, install `tesseract-ocr` and its English trained data. Set `TESSERACT_CMD` only if the executable is not on `PATH`; `OCR_LANGUAGE` defaults to `eng`. OCR output is transient and is not saved in the report.
+On Windows, run `scripts/setup_tesseract_local.ps1` to download the pinned Tesseract 5.5.3 release and English model into the ignored `.runtime/tesseract` directory. The script uses an installed 7-Zip command-line extractor, verifies both SHA-256 hashes, and does not modify system PATH or require Docker. The app auto-detects this project-local copy. For other systems, install Tesseract and English data using the [Tesseract project's installation guidance](https://github.com/UB-Mannheim/tesseract/wiki). `TESSERACT_CMD` can override executable discovery and `OCR_LANGUAGE` defaults to `eng`. OCR output is transient and is not saved in the report.
 
 ### Run checks
 
@@ -183,7 +183,7 @@ Install Tesseract with English language data to enable OCR. On Windows, use the 
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-The CI workflow also runs Bandit and pip-audit. The latest local regression run completed **93 tests with no failures in 65.70 seconds**. The recorded security review had no medium or high Bandit findings; low findings are documented in [TESTING.md](docs/TESTING.md). A passing test suite is evidence for the cases tested, not proof that no vulnerabilities exist.
+The CI workflow also runs Bandit and pip-audit. The latest local regression run completed **94 tests with no failures in 78.66 seconds**. A native Tesseract 5.5.3 check recognized the synthetic OCR sample and the DLP policy blocked it without storing the matched value. The recorded security review had no medium or high Bandit findings; low findings are documented in [TESTING.md](docs/TESTING.md). A passing test suite is evidence for the cases tested, not proof that no vulnerabilities exist.
 
 ## Account and security model
 
@@ -280,7 +280,7 @@ SecureVault/
 3. Upload `samples/document-photo.png` with the OpenCV option and compare the normalized result with your original.
 4. Upload a supported document sample and describe the reconstruction trade-offs.
 5. Use `samples/yara-demo-powershell.txt` to show a harmless text signature match. It contains inert text, not executable malware.
-6. Use `samples/ocr-demo.png` to demonstrate OCR-assisted DLP only on a system with Tesseract installed; otherwise show the honest unavailable state.
+6. Use `samples/ocr-demo.png` to demonstrate OCR-assisted DLP. On Windows, first run `scripts/setup_tesseract_local.ps1`; on systems without the native engine, explain the unavailable state.
 7. Create a share code for an eligible file, redeem once, and explain why reuse fails.
 8. Explain the limits: one antivirus engine, local rules, pattern-based DLP, server-held keys and no dynamic sandbox.
 

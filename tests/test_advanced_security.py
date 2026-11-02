@@ -222,6 +222,18 @@ def test_ocr_skips_unsupported_file_type(tmp_path):
     assert text=='' and result['status']=='not_applicable'
 
 
+def test_tesseract_discovery_uses_override_then_standard_windows_install(tmp_path,monkeypatch):
+    import app.security_engines as engines
+    binary=tmp_path/'Tesseract-OCR'/'tesseract.exe'
+    binary.parent.mkdir();binary.write_bytes(b'')
+    monkeypatch.setattr(engines.shutil,'which',lambda _name:None)
+    monkeypatch.setenv('ProgramFiles',str(tmp_path))
+    monkeypatch.delenv('TESSERACT_CMD',raising=False)
+    assert engines._find_tesseract()==str(binary)
+    monkeypatch.setenv('TESSERACT_CMD','custom-tesseract.exe')
+    assert engines._find_tesseract()=='custom-tesseract.exe'
+
+
 def test_ocr_output_is_sent_to_dlp_without_recording_value(tmp_path,monkeypatch):
     from types import SimpleNamespace
     import app.security_engines as engines

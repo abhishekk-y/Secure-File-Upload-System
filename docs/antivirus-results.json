@@ -1,6 +1,6 @@
 {
-  "timestamp_utc": "2026-09-21T03:41:03.628255+00:00",
-  "engine": "ClamAV 1.5.4/28129/Sun Sep 20 11:56:26 2026",
+  "timestamp_utc": "2026-11-02T21:01:52.441919+00:00",
+  "engine": "ClamAV 1.5.4/28172/Mon Nov  2 11:54:10 2026",
   "checks": {
     "benign": {
       "expected_exit_code": 0,
@@ -20,5 +20,5 @@
       "passed": true
     }
   },
-  "scope": "Two local integration fixtures; not a malware detection benchmark."
+  "scope": "Benign and custom-signature checks verify integration; EICAR result is separately recorded and may be inconclusive. Not a detection benchmark."
 }
