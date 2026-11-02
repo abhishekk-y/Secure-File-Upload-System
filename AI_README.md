@@ -34,7 +34,7 @@ Read [README.md](README.md) first. Then use [SECURITY.md](docs/SECURITY.md), [SY
 
 ## Honest feature boundaries
 
-- Per-file maximum: 5 MiB. Per-account quota: 500,000,000 bytes (500 MB decimal), 200 files. Self-registration defaults to five accounts.
+- Per-file maximum: 50 MiB. Per-account quota: 500,000,000 bytes (500 MB decimal), 200 files. Self-registration defaults to five accounts.
 - Supported formats: TXT, PNG/JPEG, PDF, DOCX, CSV, HTML, XML and restricted SVG. ZIP and executable formats are rejected.
 - Local rules and pattern checks provide indicators only. A YARA no-match or ClamAV clean result is not a universal malware-free guarantee.
 - Fernet is server-side encryption at rest; the server retains the key. The app does not provide end-to-end encryption.

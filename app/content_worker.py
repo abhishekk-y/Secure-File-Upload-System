@@ -13,7 +13,7 @@ from pathlib import Path, PurePosixPath
 import xml.etree.ElementTree as StdET  # Output construction only; untrusted XML uses SafeET.
 from defusedxml import ElementTree as SafeET
 
-MAX_BYTES = 5 * 1024 * 1024
+MAX_BYTES = 50 * 1024 * 1024
 MAX_TEXT = 500_000
 
 
@@ -173,7 +173,7 @@ if __name__ == '__main__':
             resource.setrlimit(resource.RLIMIT_CPU, (15, 15))
         raw = Path(source).read_bytes()
         if len(raw) > MAX_BYTES:
-            raise ValueError('Input exceeds 5 MiB.')
+            raise ValueError('Input exceeds 50 MiB.')
         output, text, detail = rebuild(raw, ext)
         Path(destination).write_bytes(output)
         Path(report).write_text(json.dumps({'text':text,'detail':detail}), encoding='utf-8')

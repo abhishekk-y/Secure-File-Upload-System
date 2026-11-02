@@ -9,6 +9,7 @@ import secrets
 import sqlite3
 import subprocess
 import tempfile
+import threading
 import time
 import warnings
 from datetime import timedelta
@@ -26,7 +27,9 @@ import qrcode
 from werkzeug.security import check_password_hash, generate_password_hash
 from .security_engines import MIMES, RECONSTRUCT, reconstruct, inspect_content, ocr_text
 
-MAX_FILE = 5 * 1024 * 1024
+MAX_FILE = 50 * 1024 * 1024
+MAX_REQUEST_OVERHEAD = 1024 * 1024
+MAX_FORM_OVERHEAD = 128 * 1024
 QUOTA = 500_000_000
 
 
@@ -55,7 +58,7 @@ def create_app(test_config=None):
     detected_scanner = _find_clamscan()
     trusted_hosts = os.getenv('TRUSTED_HOSTS') or 'localhost,127.0.0.1'
     app.config.from_mapping(
-        MAX_CONTENT_LENGTH=MAX_FILE + 128 * 1024,
+        MAX_CONTENT_LENGTH=MAX_FILE + MAX_FORM_OVERHEAD,
         MAX_FORM_MEMORY_SIZE=64 * 1024,
         MAX_FORM_PARTS=10,
         SESSION_COOKIE_HTTPONLY=True,
@@ -95,6 +98,21 @@ def create_app(test_config=None):
     CSRFProtect(app)
     limiter = Limiter(get_remote_address, app=app, default_limits=['300 per minute'])
     app.extensions['vault_limiter'] = limiter
+    upload_progress = {}
+    upload_progress_lock = threading.Lock()
+
+    def set_upload_progress(progress_id, owner_id, state, percent, label):
+        if not progress_id:
+            return
+        now = time.monotonic()
+        with upload_progress_lock:
+            expired = [key for key, value in upload_progress.items() if now - value['updated'] > 600]
+            for key in expired:
+                upload_progress.pop(key, None)
+            upload_progress[progress_id] = {
+                'owner_id': owner_id, 'state': state, 'percent': percent,
+                'label': label, 'updated': now,
+            }
 
     def db():
         if 'db' not in g:
@@ -393,6 +411,21 @@ def create_app(test_config=None):
         return render_template('dashboard.html', files=files, used=used, quota=QUOTA,
                                scanner=bool(app.config['SCANNER']), required=app.config['REQUIRE_SCAN'])
 
+    @app.get('/upload/progress/<progress_id>')
+    @login_required
+    @limiter.limit('120 per minute')
+    def upload_progress_status(progress_id):
+        if not re.fullmatch(r'[0-9a-f]{32}', progress_id):
+            abort(404)
+        with upload_progress_lock:
+            status = upload_progress.get(progress_id)
+            if not status or status['owner_id'] != g.user['id']:
+                return {'state': 'waiting', 'percent': 0, 'label': 'Waiting for the upload to reach the server.'}
+            return {
+                'state': status['state'], 'percent': status['percent'],
+                'label': status['label'],
+            }
+
     @app.get('/demo/yara-sample')
     @login_required
     @limiter.limit('10 per minute')
@@ -410,7 +443,7 @@ def create_app(test_config=None):
             raise ValueError('Use a simple filename with one supported document or image extension.')
         raw = upload.read(MAX_FILE + 1)
         if not raw or len(raw) > MAX_FILE:
-            raise ValueError('Files must be nonempty and no larger than 5 MiB.')
+            raise ValueError('Files must be nonempty and no larger than 50 MiB.')
         ext = name.rsplit('.', 1)[1].lower()
         original = raw
         expected_mime = MIMES[ext]
@@ -450,7 +483,7 @@ def create_app(test_config=None):
             except (UnidentifiedImageError, OSError, Image.DecompressionBombError, Image.DecompressionBombWarning):
                 raise ValueError('The image is malformed or unsafe to process.') from None
             if len(raw) > MAX_FILE:
-                raise ValueError('The normalized image exceeds 5 MiB.')
+                raise ValueError('The normalized image exceeds 50 MiB.')
             mime = 'image/png' if expected == 'PNG' else 'image/jpeg'
         return name, raw, mime, original
 
@@ -518,20 +551,30 @@ def create_app(test_config=None):
     @limiter.limit('20 per minute')
     def upload():
         file = request.files.get('file')
+        progress_id = request.form.get('progress_id', '')
+        if not re.fullmatch(r'[0-9a-f]{32}', progress_id):
+            progress_id = ''
+        owner_id = g.user['id']
         try:
+            set_upload_progress(progress_id, owner_id, 'scanning', 3, 'Checking filename, size and file signature…')
             if not file:
                 raise ValueError('Choose a file to upload.')
             name, raw, mime, original = validate(file)
             extension = name.rsplit('.', 1)[1].lower()
+            set_upload_progress(progress_id, owner_id, 'scanning', 12, 'Checking file structure and local detection rules…')
             inspect_content(original, '', db())
+            set_upload_progress(progress_id, owner_id, 'scanning', 24, 'Running the antivirus check…')
             scan_result = scan(original)
             extracted = raw.decode('utf-8') if mime == 'text/plain' else ''
             reconstruction = 'Image re-encoded without original metadata' if mime in ('image/png', 'image/jpeg') else 'UTF-8 validated'
             if extension in RECONSTRUCT:
+                set_upload_progress(progress_id, owner_id, 'scanning', 40, 'Rebuilding the document into a safer representation…')
                 raw, extracted, reconstruction = reconstruct(raw, extension, root)
+            set_upload_progress(progress_id, owner_id, 'scanning', 56, 'Extracting text for sensitive-data checks…')
             ocr_extracted, ocr_result = ocr_text(original, mime, root)
             if ocr_extracted:
                 extracted = (extracted + '\n' + ocr_extracted)[:500_000]
+            set_upload_progress(progress_id, owner_id, 'scanning', 68, 'Checking content and sensitive-data patterns…')
             security_report = inspect_content(original, extracted, db())
             security_report['reconstruction'] = reconstruction
             security_report['ocr'] = ocr_result
@@ -541,14 +584,17 @@ def create_app(test_config=None):
                 security_report['share_allowed'] = False
             document_result = None
             if request.form.get('document_scan') == '1':
+                set_upload_progress(progress_id, owner_id, 'scanning', 77, 'Enhancing the document image…')
                 from .document_scanner import scan_document
                 raw, document_result = scan_document(raw, mime)
             if raw != original:
+                set_upload_progress(progress_id, owner_id, 'scanning', 86, 'Checking the stored version with antivirus…')
                 scan_result = scan(raw)
             security_report['antivirus'] = scan_result
             security_report['antivirus_scope'] = 'Original and stored representation' if raw != original else 'Original equals stored representation'
             security_report['stored_sha256'] = hashlib.sha256(raw).hexdigest()
             identity = secrets.token_hex(16)
+            set_upload_progress(progress_id, owner_id, 'scanning', 94, 'Encrypting and saving to your private vault…')
             encrypted = cipher.encrypt(raw)
             connection = db()
             # Serialize quota check and insert so simultaneous uploads cannot exceed quota.
@@ -574,6 +620,7 @@ def create_app(test_config=None):
                 target.unlink(missing_ok=True)
                 raise
             event('File uploaded', name)
+            set_upload_progress(progress_id, owner_id, 'complete', 100, 'Security checks complete. File saved to your vault.')
             if document_result:
                 event('Document processed', document_result)
                 flash(document_result, 'success')
@@ -581,6 +628,7 @@ def create_app(test_config=None):
             if not security_report['share_allowed']:
                 flash('Sensitive-data indicators found. Private storage is allowed, but sharing is blocked. Review the security report.', 'error')
         except ValueError as error:
+            set_upload_progress(progress_id, owner_id, 'rejected', 100, 'Upload stopped: ' + str(error)[:160])
             event('Upload rejected', str(error))
             flash(str(error), 'error')
         return redirect(url_for('dashboard'))

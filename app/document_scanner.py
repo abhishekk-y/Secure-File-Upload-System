@@ -54,7 +54,7 @@ def scan_document(raw, mime):
     output = io.BytesIO()
     Image.fromarray(cleaned).save(output, format='PNG' if mime == 'image/png' else 'JPEG')
     result = output.getvalue()
-    if len(result) > 5 * 1024 * 1024:
-        raise ValueError('Processed document exceeds 5 MiB.')
+    if len(result) > 50 * 1024 * 1024:
+        raise ValueError('Processed document exceeds 50 MiB.')
     detail = 'Page detected, straightened and enhanced.' if detected else 'No clear page boundary found; full image enhanced without cropping.'
     return result, detail

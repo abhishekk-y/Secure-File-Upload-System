@@ -109,7 +109,7 @@ def reconstruct(raw, extension, root):
                 raise ValueError('Document reconstruction timed out or could not start. Upload rejected.') from None
             if result.returncode != 0 or not output.exists() or not report.exists():
                 raise ValueError('Document reconstruction failed: malformed, encrypted or over-limit document.')
-            if output.stat().st_size > 5*1024*1024 or report.stat().st_size > 4*1024*1024:
+            if output.stat().st_size > 50*1024*1024 or report.stat().st_size > 4*1024*1024:
                 raise ValueError('Reconstruction output exceeds limits.')
             metadata=json.loads(report.read_text(encoding='utf-8'))
             return output.read_bytes(), metadata['text'], metadata['detail']

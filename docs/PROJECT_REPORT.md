@@ -38,7 +38,7 @@ The Secure File Upload System, presented as SecureVault, implements a private wo
 
 The system uses Flask, SQLite, Pillow, cryptography and a responsive browser interface. Optional TOTP adds an authentication factor. Time-limited, single-use sharing codes provide deliberate recipient access without a public upload directory. A per-user HMAC chain makes changes to retained activity records detectable. An optional ClamAV adapter supports operator-configured antivirus scanning and rejects scanner errors.
 
-The recorded baseline regression run completed 49 tests without failures, errors or skips. Tests include access isolation, validation, normalization, integrity checks and concurrent code redemption. These results support the implemented workflows within the tested conditions. The system does not claim universal malware detection, end-to-end encryption or immutable audit storage. The report presents requirements, literature, alternative designs, secure SDLC activities, architecture, validation evidence and operational limitations for an academic demonstration.
+The latest integrated regression run completed 93 tests without failures, errors or skips. Tests include access isolation, validation, normalization, integrity checks, concurrent code redemption, local YARA-X outcomes, OCR-to-DLP wiring and OCR parser failure handling. Native Tesseract execution remains unverified on this workstation. These results support the implemented workflows within the tested conditions. The system does not claim universal malware detection, end-to-end encryption or immutable audit storage. The report presents requirements, literature, alternative designs, secure SDLC activities, architecture, validation evidence and operational limitations for an academic demonstration.
 
 ## Graphical Abstract
 
@@ -71,7 +71,7 @@ A file extension is only a naming convention. A declared MIME type is supplied b
 
 ### 1.2 Problem identification
 
-The project asks how a web application can accept a deliberately limited set of files, reduce unnecessary metadata, protect stored bytes and offer short-lived sharing while remaining demonstrable on a student laptop. The scope covers TXT, PNG and JPEG. Complex document formats, executables, archives and universal malware classification are excluded because their parsers and threat models require separate engineering.
+The project asks how a web application can accept a deliberately limited set of files, reduce unnecessary metadata, protect stored bytes and offer short-lived sharing while remaining demonstrable on a student laptop. The scope covers TXT, PNG, JPEG, PDF, DOCX, CSV, HTML, XML and restricted SVG. Additional document types are reconstructed into reduced-feature representations. Executables, generic archives, legacy Office binaries and universal malware classification remain excluded.
 
 ### 1.3 Objectives and measurable acceptance criteria
 
@@ -79,7 +79,7 @@ The application shall reject malformed, mislabeled, empty and oversized inputs; 
 
 ### 1.4 Scope and feasibility
 
-A single Flask process with Waitress and SQLite fits the academic deployment. Open-source libraries avoid a mandatory cloud service or paid API. CPU and memory costs are bounded by file, image and account limits. The operator must provide a supported Python installation and protect the private data folder. ClamAV is an optional additional installation. The deployment is feasible for a local demonstration; public operation additionally requires HTTPS, backups, monitoring and hardened host permissions.
+A single Flask process with Waitress and SQLite fits the academic deployment. Open-source libraries avoid a mandatory cloud service or paid API. CPU and memory costs are bounded by file, image and account limits. The operator must provide a supported Python installation and protect the private data folder. ClamAV is a separately installed engine; a portable installation is available on the demonstration workstation. The deployment is feasible for a local demonstration; public operation additionally requires HTTPS, backups, monitoring and hardened host permissions.
 
 ### 1.5 Development sequence and secure SDLC
 
@@ -153,7 +153,7 @@ Table 3.1 Functional requirements
 
 ### 3.2 Nonfunctional requirements and constraints
 
-Security requires server-side enforcement independent of JavaScript. Usability requires descriptive errors, keyboard-accessible forms and clear distinction between content validation and antivirus. Maintainability uses a small stack and regression tests. Resource constraints are 5 MiB per file, 16 megapixels per image, 50 MiB and 200 files per owner. Sharing permits at most 20 active codes per owner and a 15-minute lifetime.
+Security requires server-side enforcement independent of JavaScript. Usability requires descriptive errors, keyboard-accessible forms and clear distinction between content validation and antivirus. Maintainability uses a small stack and regression tests. Resource constraints are 50 MiB per file, 16 megapixels per image, 500 MB and 200 files per owner. Sharing permits at most 20 active codes per owner and a 15-minute lifetime.
 
 Economic constraints favor local open-source components. Environmental considerations favor bounded processing over repeated unbounded decoding. Health and physical manufacturing constraints have no direct application to this software artifact. Safety concerns include preventing unintended exposure and avoiding misleading malware-free claims. Professional and ethical obligations include accurate reporting and responsible handling of test data. Social considerations include readable controls and explaining bearer access. No political profiling is performed. Regulatory compliance depends on deployment jurisdiction and data use; no compliance certification is asserted. Data minimization and operator-controlled retention support responsible operation.
 
@@ -209,11 +209,31 @@ The landing page combines cream surfaces, editorial serif type, dark outlines, l
 
 ### 3.11 Inspection reports and persistent status
 
-The files table records document processing separately from antivirus. Older uploads without processing metadata are labelled as unrecorded. An owner-only JSON inspection report verifies ciphertext and SHA-256 before describing integrity, normalization, MIME, size and processing outcomes. Cross-account access and corrupt blobs are rejected. A report is evidence of application checks, not an independent malware-free certificate.
+The files table records document processing separately from antivirus and stores structured security inspection JSON. Older uploads without processing metadata are labelled as unrecorded. An owner-only JSON inspection report verifies ciphertext and SHA-256 before describing integrity, normalization, MIME, size and processing outcomes. Cross-account access and corrupt blobs are rejected. A report is evidence of application checks, not an independent malware-free certificate.
 
 ### 3.12 OpenCV document scanning
 
 A user can opt into document-photo processing after PNG/JPEG validation. OpenCV operates on a downsampled image with a maximum side of 2000 pixels. Canny edges and contour approximation locate a large convex quadrilateral. A four-point perspective transform straightens the candidate page. CLAHE improves grayscale contrast. If no page is found, the full frame is enhanced without cropping and the result is disclosed. Processed bytes still pass size, antivirus, quota and encryption checks. The feature is neither OCR nor malware classification and may misidentify a page boundary; users should retain originals. Tests include synthetic skewed pages, no-boundary fallback, text rejection and a complete processed upload/download.
+
+### 3.13 Advanced document handling and data loss prevention
+
+The additional document formats are accepted only through explicit reconstruction policies. PDFium renders up to ten PDF pages, each bounded to a 1600-pixel side, and Pillow writes a new image-only PDF. This preserves visible page appearance while discarding original interactive structures. Searchable text, digital signatures, annotations and form behavior are not guaranteed to survive. DOCX is rebuilt from paragraph text into a minimal OOXML container, discarding macros, embedded objects, relationships, fields, images and formatting.
+
+CSV is parsed and formula-like cells are prefixed with an apostrophe. HTML is reduced to a basic formatting allowlist by nh3. XML rejects DTDs and entities through defusedxml; attributes and XInclude are removed. SVG retains only restricted shapes and text. These document types are delivered as attachments and are never rendered as active inline content by the application.
+
+Reconstruction runs in at most two simultaneous short-lived processes with a 20-second deadline. Input and stored output remain bounded to 50 MiB. DOCX ZIP expansion is limited to 20 MiB, 200 entries and a 100:1 per-entry ratio. This is process separation with limits, not a hardened dynamic malware sandbox. Parser vulnerabilities remain part of the threat model.
+
+Before persistence, local policy compares the source SHA-256 against an operator-maintained denylist. An unmatched hash is reported as no match, not as globally clean. YARA-X applies local rules to the original upload and rejects a match; these rules supplement ClamAV and do not establish that unmatched content is safe. Static markers and entropy are descriptive indicators. Tesseract OCR is attempted for PNG/JPEG and rendered PDF pages when installed. Its transient text joins parser-extracted text for DLP; OCR status and character count are recorded, not the extracted content. Credentials detected in available text cause rejection. Possible payment-card numbers, supported personal identifiers and large contact lists cause a sharing restriction while retaining private owner access. Reports record categories only, not matched values. OCR can miss or misread text. PDFium currently renders pages in the web process; page/file bounds do not provide process isolation, which remains a deployment limitation and a planned security improvement.
+
+Table 3.3 Advanced feature mapping and limitations
+
+| Requested area | Implemented behavior | Limitation |
+| --- | --- | --- |
+| Content reconstruction | New reduced-feature documents | Not OPSWAT Deep CDR |
+| Multiple detection layers | ClamAV, signatures, local hashes and static indicators | One antivirus engine |
+| Data loss prevention | Credential block, sharing restriction and OCR assisted text extraction | Pattern checks and OCR; incomplete recognition |
+| Threat intelligence | Operator-managed SHA-256 denylist | No external feed |
+| Sandbox analysis | Bounded reconstruction subprocesses | No dynamic execution or hardened sandbox |
 
 ## Chapter 4 Results Analysis and Validation
 
@@ -223,9 +243,9 @@ Flask and Jinja implement server-rendered routes; SQLite supports transactional 
 
 ### 4.2 Recorded results
 
-The baseline JUnit evidence records 49 tests, zero failures, zero errors and zero skips in 272.530 seconds on 17 September 2026. Refer to TESTING.md and test-results.xml for subsequent results after feature changes. Cases include invalid types, metadata removal, corrupted ciphertext, cross-account denial, session expiry, OTP replay and concurrent sharing. A successful test establishes the specified expectation for its fixture and execution environment.
+The integrated JUnit evidence records 93 tests, zero failures, zero errors and zero skips in 65.70 seconds on 3 November 2026. Cases include invalid types, metadata removal, corrupted ciphertext, cross-account denial, session expiry, OTP replay, concurrent sharing, local YARA-X matches and upload rejection, OCR text reaching DLP, and safe reporting when PDF OCR parsing raises an error. The OCR engine itself was unavailable on this workstation, so its real native invocation still requires local acceptance testing. A successful test establishes the specified expectation for its fixture and execution environment.
 
-Bandit on 20 September 2026 reported zero medium and high severity issues and two low-severity subprocess findings. The configured scanner invocation uses no shell, a fixed argument structure and a timeout. The findings are retained and explained rather than concealed. Antivirus engine behavior is mocked in regression tests; a live ClamAV engine has not been validated on this workstation.
+The latest Bandit execution reported zero medium and high severity issues and seven low-severity findings. These include subprocess checks for local ClamAV, bounded reconstruction and OCR, plus a warning on `ElementTree` used only to serialize a rebuilt DOCX tree; untrusted XML input is parsed with `defusedxml`. The configured subprocess invocations use no shell, fixed argument structures and timeouts. Antivirus adapter regression tests use controlled responses. Separate real ClamAV 1.5.4 checks accepted benign content and detected a harmless custom signature. The EICAR fixture returned scanner error code 2 and is reported as inconclusive. The application rejects scanner errors. A fresh pip-audit could not reach PyPI in the network-restricted environment, so dependency advisory status is unverified and no clean-audit claim is made.
 
 ### 4.3 Interface evidence
 
@@ -241,7 +261,7 @@ Negative tests validate that a filename or claimed MIME cannot independently aut
 
 ### 4.5 Deployment checks and limitations
 
-The native server runs at loopback for demonstration. Docker configuration is provided, but container execution remains unverified because Docker Engine was unavailable during the workstation check. Public operation requires a TLS reverse proxy, Secure cookies, trusted proxy configuration, filesystem permissions and protected backups. In-memory rate limits do not coordinate across multiple processes. SQLite and synchronous processing are chosen for bounded local use.
+The native server runs at loopback for demonstration. Public operation requires a TLS reverse proxy, Secure cookies, trusted proxy configuration, filesystem permissions and protected backups. In-memory rate limits do not coordinate across multiple processes. SQLite and synchronous processing are chosen for bounded local use.
 
 ## Chapter 5 Conclusion and Future Work
 
@@ -251,13 +271,15 @@ SecureVault demonstrates a coherent controlled-upload workflow: inspect input, r
 
 ### 5.2 Deviations and remaining boundaries
 
-The system intentionally limits file formats and does not offer general document conversion. Antivirus requires operator installation and is not a default guarantee. Audit integrity has no external checkpoint. No password recovery, key rotation service or public production deployment is claimed. Certificate and acknowledgement fields remain for authorized institutional completion. The removed weekly planning schedule is not restored.
+The system intentionally limits file formats and reconstructs supported documents with explicitly reduced fidelity. Antivirus requires operator installation and is not a default guarantee. Audit integrity has no external checkpoint. No password recovery, key rotation service or public production deployment is claimed. Certificate and acknowledgement fields remain for authorized institutional completion. The removed weekly planning schedule is not restored.
 
 ### 5.3 Future work
 
-Future work includes passkeys and recovery flows, external audit checkpoints, managed keys with rotation, queue-based scanning workers, shared rate-limit storage, independently verified container deployment and object storage. PDF or Office support requires dedicated sanitization and parser-isolation research. These extensions should be introduced with their own acceptance criteria and security tests.
+Future work includes passkeys and recovery flows, external audit checkpoints, managed keys with rotation, queue-based scanning workers, shared rate-limit storage and object storage. Broader Office formats and higher-fidelity reconstruction require further parser-isolation research. These extensions should be introduced with their own acceptance criteria and security tests.
 
 ## References
+
+Ammonia and nh3 Contributors (n.d.). nh3 Documentation. https://nh3.readthedocs.io/en/latest/
 
 ClamAV Project (n.d.). Scanning. https://docs.clamav.net/manual/Usage/Scanning.html
 
@@ -279,6 +301,8 @@ Pallets Projects (n.d.). Flask Security Considerations. https://flask.palletspro
 
 Pillow Contributors (n.d.). Image Module. https://pillow.readthedocs.io/en/stable/reference/Image.html
 
+pypdfium2 Contributors (n.d.). Python API. https://pypdfium2.readthedocs.io/en/stable/python_api.html
+
 PyOTP Contributors (n.d.). PyOTP Documentation. https://pyauth.github.io/pyotp/
 
 Souppaya, M., Scarfone, K., and Dodson, D. (2022). Secure Software Development Framework Version 1.1. NIST SP 800-218. https://csrc.nist.gov/pubs/sp/800/218/final
@@ -297,9 +321,11 @@ Install Python 3.12, create a virtual environment, install requirements.txt and 
 
 ### 2.2 Upload and inspect
 
-Select Upload a file. Browse or drop one TXT, PNG or JPEG file no larger than 5 MiB. Submit and wait for server validation. A rejection message explains the relevant constraint. Accepted files appear in the vault. Use the eye/details action to inspect an image preview, MIME, size and fingerprint. The antivirus status is independent of content validation.
+Select Upload a file. Browse or drop one supported file no larger than 50 MiB. Submit and watch separate transfer and server-check progress indicators. A rejection message explains the relevant constraint. Accepted files appear in the vault. Use the eye/details action to inspect an image preview, MIME, size and fingerprint. The antivirus status is independent of content validation.
 
 ### 2.3 Download and share
+
+Open View security report from file details to review reconstruction, OpenCV, antivirus, DLP, local hash status and fingerprints. The JSON inspection download contains the same recorded checks and verifies current file integrity. A sensitive-data finding can prevent sharing even though the owner may download privately. Redact the original and upload a replacement to resolve the restriction.
 
 Use Download to receive the normalized file. Open details and select Create share code. Copy the code and send it through a trusted channel. The recipient opens Receive a file, enters the code and downloads once within 15 minutes. Shared codes lists expiry and use state; revoke an unused code to cancel access. A transfer interrupted after redemption may require a new code.
 
@@ -317,6 +343,4 @@ Demonstrate sign-in, a valid upload, a renamed invalid file, image metadata remo
 
 ## Achievements
 
-Implemented a working controlled file-upload application with encrypted storage, optional MFA, explicit sharing and audit checks. Established a baseline 49-test regression result and original interface assets. Prepared reproducible technical documentation. No awards, patents, publications or external certifications are claimed.
-
-
+Implemented a working controlled file-upload application with encrypted storage, optional MFA, explicit sharing and audit checks. The latest integrated regression run records 88 passing tests. Prepared reproducible technical documentation and a viva presentation. No awards, patents, publications or external certifications are claimed.

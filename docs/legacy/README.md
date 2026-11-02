@@ -1,0 +1,1 @@
+These are preserved earlier Word exports. They are superseded by the current PDF and Markdown documents one directory above, and do not include all advanced features. They were not visually verified in Word. Do not submit them as the final report.

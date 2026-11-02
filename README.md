@@ -28,7 +28,7 @@ Ordinary upload forms often trust a filename or browser-provided content type. S
 
 | At a glance | Current behavior |
 | --- | --- |
-| Per-file upload limit | 5 MiB |
+| Per-file upload limit | 50 MiB |
 | Per-account storage quota | 500,000,000 bytes (500 MB decimal) |
 | Per-account file count | 200 files |
 | Self-service account cap | 5 accounts by default; configurable |
@@ -44,6 +44,7 @@ Ordinary upload forms often trust a filename or browser-provided content type. S
 | --- | --- | --- |
 | Account security | scrypt password hashes, CSRF protection, rate limits, server-checked sessions and optional TOTP MFA | No default accounts; no password recovery flow |
 | Upload validation | Checks safe filename, extension, declared MIME, signatures where defined, parser structure and size | Plain text has no universal magic signature; it is validated as UTF-8 text |
+| Transfer and inspection progress | Shows actual browser transfer percentage and server-reported inspection-stage checkpoints, with a timeout-based duration estimate | A long-running scan can pause the stage bar; antivirus engines do not expose live progress here |
 | Image cleanup | Decodes and re-encodes PNG/JPEG to remove embedded metadata; optional OpenCV page detection and perspective correction | OpenCV is an image-cleanup feature, not OCR or malware detection |
 | Document reconstruction | Rebuilds supported document formats into reduced-feature output | Some original formatting, metadata and interactive content are intentionally lost |
 | Antivirus | Invokes local ClamAV for original and changed content with a timeout | One engine only; scanner errors fail closed |
@@ -211,7 +212,7 @@ sequenceDiagram
 | File storage | Fernet encryption, random storage ID and SHA-256 integrity check | The server owns the key, so encryption is not end-to-end |
 | Authorization | Owner ID checked on each file operation | Random IDs do not replace authorization checks |
 | Audit history | HMAC chain per user | Final-suffix deletion needs an independent checkpoint to detect |
-| Resource limits | 5 MiB/file, image/PDF/parser bounds, account quota and count cap | Host disk capacity and broad availability remain operator concerns |
+| Resource limits | 50 MiB/file, image/PDF/parser bounds, account quota and count cap | Host disk capacity and broad availability remain operator concerns |
 
 ## Requirements and SDLC
 
@@ -295,9 +296,10 @@ Use only synthetic files. Never demonstrate with real credentials, personal docu
 | Security design and limitations | [SECURITY.md](docs/SECURITY.md) |
 | Research foundation | [RESEARCH.md](docs/RESEARCH.md) |
 | Test plan and evidence | [TESTING.md](docs/TESTING.md) · [JUnit XML](docs/test-results.xml) |
+| Detailed project report | [PDF](docs/PROJECT_REPORT.pdf) · [Word](docs/PROJECT_REPORT.docx) · [editable Markdown](docs/PROJECT_REPORT.md) |
 | Practical demonstration and viva | [DEMO_AND_VIVA.md](docs/DEMO_AND_VIVA.md) |
 
-The detailed project report is the next documentation task. Replace academic placeholders with genuine student, institution and guide details before submission.
+Replace academic placeholders with genuine student, institution and guide details before submission.
 
 ## Research references
 

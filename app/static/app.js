@@ -14,9 +14,9 @@ const feedback = document.querySelector('#file-feedback');
 const dropzone = document.querySelector('#dropzone');
 function selectedFile() {
   const file = fileInput?.files[0];
-  const invalid = file && (file.size === 0 || file.size > 5 * 1024 * 1024);
-  fileInput?.setCustomValidity(invalid ? 'Choose a nonempty file no larger than 5 MiB.' : '');
-  if (feedback) feedback.textContent = file ? `${file.name} · ${(file.size / 1024).toFixed(1)} KiB${invalid ? ' — invalid size' : ''}` : 'No file selected';
+  const invalid = file && (file.size === 0 || file.size > 50 * 1024 * 1024);
+  fileInput?.setCustomValidity(invalid ? 'Choose a nonempty file no larger than 50 MiB.' : '');
+  if (feedback) feedback.textContent = file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(2)} MiB${invalid ? ' — exceeds the 50 MiB limit' : ''}` : 'No file selected';
 }
 fileInput?.addEventListener('change', selectedFile);
 for (const name of ['dragenter', 'dragover']) dropzone?.addEventListener(name, event => { event.preventDefault(); dropzone.classList.add('dragging'); });
@@ -37,20 +37,46 @@ uploadForm?.addEventListener('submit', event => {
   const status = document.querySelector('#transfer-status');
   const progress = document.querySelector('#upload-progress');
   const message = document.querySelector('#progress-text');
+  const scanProgress = document.querySelector('#scan-progress');
+  const scanMessage = document.querySelector('#scan-progress-text');
+  const progressId = [...crypto.getRandomValues(new Uint8Array(16))].map(value => value.toString(16).padStart(2, '0')).join('');
+  const progressInput = document.querySelector('#progress-id');
+  progressInput.value = progressId;
+  const statusUrl = uploadForm.dataset.progressUrl.replace('0'.repeat(32), progressId);
   button.disabled = true;
   status.hidden = false;
+  let pollTimer;
+  let polling = true;
+  const pollStatus = async () => {
+    if (!polling) return;
+    try {
+      const response = await fetch(statusUrl, {credentials: 'same-origin', cache: 'no-store'});
+      if (response.ok) {
+        const stage = await response.json();
+        if (stage.state !== 'waiting') {
+          scanProgress.value = stage.percent;
+          scanMessage.textContent = `${stage.label} ${stage.percent}%`;
+          if (stage.state === 'complete' || stage.state === 'rejected') polling = false;
+        }
+      }
+    } catch { /* A temporary polling failure does not interrupt the upload. */ }
+    if (polling) pollTimer = setTimeout(pollStatus, 1000);
+  };
+  pollStatus();
   const xhr = new XMLHttpRequest();
   xhr.open('POST', uploadForm.action);
-  xhr.timeout = 120000;
+  xhr.timeout = 180000;
   xhr.upload.addEventListener('progress', event => {
     if (event.lengthComputable) {
       const percent = Math.round(event.loaded / event.total * 100);
       progress.value = percent;
-      message.textContent = percent < 100 ? `Uploading ${percent}%` : 'Upload transferred. Validating and saving...';
+      message.textContent = percent < 100 ? `Transferring file ${percent}%` : 'Transfer complete · server checks are starting…';
     }
   });
-  const fail = text => { message.textContent = text; button.disabled = false; };
+  const stopPolling = () => { polling = false; clearTimeout(pollTimer); };
+  const fail = text => { stopPolling(); message.textContent = text; button.disabled = false; };
   xhr.onload = () => {
+    stopPolling();
     if (xhr.status >= 200 && xhr.status < 400) {
       // Flash messages survive the followed redirect only in its HTML response.
       // Preserve notices before navigating back to the workspace.

@@ -10,7 +10,7 @@ Treat clients, uploaded bytes, filenames and declared MIME types as untrusted. T
 2. Require an authenticated, unexpired, unrevoked session and a valid CSRF token.
 3. Apply per-IP rate limits.
 4. Accept a bounded simple basename with exactly one supported extension (TXT, PNG, JPEG, PDF, DOCX, CSV, HTML, XML or restricted SVG). Storage never uses that basename.
-5. Read at most 5 MiB plus one byte; reject empty or oversized content.
+5. Read at most 50 MiB plus one byte; reject empty or oversized content.
 6. Compare the extension to the declared MIME. Empty or `application/octet-stream` MIME is accepted only when subsequent content checks pass. A specific conflicting MIME is rejected.
 7. For PNG require `89 50 4E 47 0D 0A 1A 0A`; for JPEG require `FF D8 FF`. Then compare the parser's format, enforce 16 megapixels, verify structure and fully decode. Signatures alone are insufficient.
 8. Re-encode images after clearing metadata. This removes EXIF/GPS, comments, embedded metadata and trailing content. The original bytes are not retained. JPEG may be recompressed; PNG is converted to RGBA; animation is flattened to the decoded first frame.
@@ -18,6 +18,8 @@ Treat clients, uploaded bytes, filenames and declared MIME types as untrusted. T
 10. ClamAV is required by default. Scan the original and, when changed, the normalized bytes with a 30-second timeout. Detection, other errors, timeouts and missing executable reject the upload. An operator can explicitly change the requirement for a local test; this must not be presented as a scanned upload.
 11. Acquire a SQLite write transaction, check the 500,000,000-byte (500 MB decimal) and 200-file quotas, create a random 128-bit storage ID, encrypt and persist normalized content, and write metadata. Roll back and remove the blob on ordinary storage/database failure.
 12. Append an HMAC-linked audit event. Return a human-readable result.
+
+The upload dialog reports browser transfer bytes separately from server-side check stages. An authenticated, owner-scoped status endpoint exposes only a random per-upload identifier, stage label and stage checkpoint. Status is held in process memory for up to ten minutes and contains no file name or contents. The displayed 5-second-to-2-minute range is a rough estimate based on configured timeouts, not a measured promise; individual scanner calls do not expose their own live percentage, so the stage bar may pause during a long check.
 
 Temporary scanning files contain plaintext inside the private data directory and are removed in a `finally` block. An abrupt process termination may leave a temporary file; operational cleanup is required. Operating-system swap and filesystem journaling are outside application-level encryption guarantees.
 
@@ -54,7 +56,7 @@ Edits to authenticated fields and deletion of interior records are detected. A d
 | TOTP replay | Atomic last-step update | TOTP does not provide phishing resistance |
 | Blob corruption | Fernet authentication and SHA-256 check | Missing files are unavailable until restored |
 | Database log edits | Per-user HMAC chain | Truncation and key compromise need external checkpoints |
-| Storage exhaustion | 5 MiB per-file, 500 MB per-account and 200-file limits | Total host capacity remains outside per-account quotas |
+| Storage exhaustion | 50 MiB per-file, 500 MB per-account and 200-file limits | Total host capacity remains outside per-account quotas |
 
 ## Scale and verification boundary
 

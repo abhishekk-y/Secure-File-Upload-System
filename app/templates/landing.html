@@ -1,7 +1,92 @@
-{% extends 'base.html' %}{% block content %}
-<section class="hero"><div class="hero-copy"><span class="editorial-label"><span></span> A MORE CONSIDERED WAY TO SHARE</span><h1>Your files.<br>Your <em>rules.</em><svg viewBox="0 0 360 25" class="headline-underline" aria-hidden="true"><path d="M3 16Q140-7 356 12M40 23Q175 7 310 21"/></svg></h1><p class="hero-description">A private place for the things you send.<br>Upload with care. Share with a code.<br>Stay in control of what happens next.</p><div class="hero-actions"><a class="button brutal" href="{{ url_for('dashboard') if g.user else url_for('register') }}">Enter your workspace {{ icon('arrow') }}</a><a class="text-link" href="{{ url_for('receive') }}">I have a share code {{ icon('arrow') }}</a></div><div class="hero-facts"><span>{{ icon('check') }}Encrypted storage</span><span>{{ icon('check') }}Single-use sharing</span><span>{{ icon('check') }}No public file directory</span></div></div>
-<div class="hero-art" aria-label="Illustration of a file moving into protected storage"><span class="art-sticker">YOUR FILES,<br>ON YOUR TERMS.</span><div class="orbit-ring"></div><svg viewBox="0 0 510 430" class="transfer-arrow" aria-hidden="true"><path d="M55 105C180-30 420 0 420 150C420 260 240 170 215 325"/><path d="m193 302 22 27 28-21"/></svg><div class="paper-file"><div class="paper-fold"></div>{{ icon('file') }}<span>project-notes.txt</span><small>YOUR ORIGINAL FILE</small><i></i><i></i><i></i></div><div class="vault-card"><div class="vault-card-top"><span class="art-shield">{{ icon('shield') }}</span><span>PRIVATE WORKSPACE</span><span class="art-light"></span></div><h2>A little less exposed.<br>A lot more <em>yours.</em></h2><div class="art-file-row">{{ icon('file') }}<div><strong>project-notes.txt</strong><small>Validated and encrypted</small></div><span class="art-check">{{ icon('check') }}</span></div><div class="art-bottom"><span>YOU CHOOSE WHO GETS ACCESS</span>{{ icon('arrow') }}</div></div><div class="share-ticket">{{ icon('key') }}<div><small>SINGLE-USE ACCESS</small><strong>A code. Not a public link.</strong></div><span class="ticket-arrow">↗</span></div><span class="art-caption">ILLUSTRATED WORKFLOW · NO PERSONAL DATA</span></div></section>
-<section class="statement-strip"><span>Less exposure.</span><svg width="38" height="38" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 0v40M0 20h40M6 6l28 28M34 6 6 34" stroke="currentColor" stroke-width="5"/></svg><span>More intention.</span><svg width="38" height="38" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 0v40M0 20h40M6 6l28 28M34 6 6 34" stroke="currentColor" stroke-width="5"/></svg><span>Files under control.</span></section>
-<section class="how-section" id="how-it-works"><div class="section-intro"><p class="eyebrow">01 / THE PROCESS</p><h2>From your device.<br>To the <em>right hands.</em></h2><p>Three clear steps. A visible record.<br>No complicated sharing permissions to untangle.</p></div><div class="process-grid"><article><span class="step-number">01</span>{{ icon('upload') }}<h3>Bring your file.</h3><p>Choose a supported document or image. The server checks type, size, structure and local signatures before it enters your workspace.</p><span class="process-foot">TXT · PNG · JPEG · PDF · DOCX · CSV · HTML · XML · SVG</span></article><article><span class="step-number">02</span>{{ icon('shield') }}<h3>Inspect and protect.</h3><p>ClamAV and YARA-X check file content. Tesseract can read printed text from images and PDF pages for DLP when installed. Images lose metadata; accepted files are encrypted.</p><span class="process-foot">VALIDATE → INSPECT → NORMALIZE → ENCRYPT</span></article><article><span class="step-number">03</span>{{ icon('link') }}<h3>Pass the code.</h3><p>Create a code for one download. It expires after 15 minutes, and you can revoke it before it is used.</p><span class="process-foot">ONE CODE / ONE DOWNLOAD</span></article></div></section>
-<section class="security-section" id="security"><div><p class="eyebrow">02 / BUILT WITH BOUNDARIES</p><h2>Trust is good.<br><em>Checks are better.</em></h2><p>Layered file checks, encrypted storage and controlled access work together. Inspect the result of each upload and add an authenticator to protect your account.</p><a class="text-link" href="{{ url_for('register') }}">Create your account {{ icon('arrow') }}</a></div><div class="security-list"><div>{{ icon('file') }}<span>Content validation + local YARA-X rules</span><small>01</small></div><div>{{ icon('image') }}<span>Metadata removal + optional OpenCV cleanup</span><small>02</small></div><div>{{ icon('key') }}<span>Optional TOTP + encrypted storage</span><small>03</small></div><div>{{ icon('clock') }}<span>Single-use sharing + tamper-evident activity</span><small>04</small></div><p>ClamAV and native Tesseract are local integrations. Reports show if either was unavailable. No match does not prove that a file is malware-free.</p></div></section>
+{% extends 'base.html' %}
+{% block content %}
+<section class="hero">
+  <div class="hero-copy">
+    <span class="editorial-label"><span></span> INSPECT FIRST / SHARE BY CHOICE</span>
+    <h1>A private vault<br>for file <em>handoffs.</em><svg viewBox="0 0 360 25" class="headline-underline" aria-hidden="true"><path d="M3 16Q140-7 356 12M40 23Q175 7 310 21"/></svg></h1>
+    <p class="hero-description">Validate each upload before it reaches your vault. Keep it private, or create a one-use code that expires after fifteen minutes.</p>
+    <div class="hero-actions">
+      <a class="button brutal" href="{{ url_for('dashboard') if g.user else url_for('register') }}">{{ 'Open your vault' if g.user else 'Create your vault' }} {{ icon('arrow') }}</a>
+      <a class="text-link" href="{{ url_for('receive') }}">I have a share code {{ icon('arrow') }}</a>
+    </div>
+    <div class="hero-facts" aria-label="SecureVault features">
+      <span>{{ icon('check') }}Encrypted at rest</span>
+      <span>{{ icon('check') }}One-use share codes</span>
+      <span>{{ icon('check') }}Owner-only reports</span>
+    </div>
+  </div>
+
+  <div class="hero-art" role="img" aria-label="Illustration showing a file passing through inspection into encrypted storage before a single-use sharing code is created">
+    <span class="art-sticker">PRIVATE<br>BY DEFAULT</span>
+    <div class="orbit-ring"></div>
+    <svg viewBox="0 0 510 430" class="transfer-arrow" aria-hidden="true"><path d="M55 105C180-30 420 0 420 150C420 260 240 170 215 325"/><path d="m193 302 22 27 28-21"/></svg>
+    <div class="paper-file">
+      <div class="paper-fold"></div>
+      {{ icon('file') }}
+      <span>project-notes.txt</span>
+      <small>ILLUSTRATION ONLY</small>
+      <i></i><i></i><i></i>
+    </div>
+    <div class="vault-card">
+      <div class="vault-card-top"><span class="art-shield">{{ icon('shield') }}</span><span>ENCRYPTED VAULT</span><span class="art-light"></span></div>
+      <h2>Inspect first.<br>Keep control.</h2>
+      <div class="art-file-row">{{ icon('file') }}<div><strong>Normalized copy</strong><small>Private until you share</small></div><span class="art-check">{{ icon('check') }}</span></div>
+      <div class="art-bottom"><span>ONE CODE / ONE DOWNLOAD</span>{{ icon('arrow') }}</div>
+    </div>
+    <div class="share-ticket">{{ icon('key') }}<div><small>OPTIONAL HANDOFF</small><strong>One use. Fifteen minutes.</strong></div><span class="ticket-arrow">↗</span></div>
+    <span class="art-caption">A PRODUCT WORKFLOW / NOT A SCAN RESULT</span>
+  </div>
+</section>
+
+<section class="statement-strip" aria-label="SecureVault principles">
+  <span>Inspect the file.</span>
+  <svg width="38" height="38" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 0v40M0 20h40M6 6l28 28M34 6 6 34" stroke="currentColor" stroke-width="5"/></svg>
+  <span>Choose the access.</span>
+  <svg width="38" height="38" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 0v40M0 20h40M6 6l28 28M34 6 6 34" stroke="currentColor" stroke-width="5"/></svg>
+  <span>Keep the record.</span>
+</section>
+
+<section class="how-section" id="how-it-works">
+  <div class="section-intro">
+    <p class="eyebrow">01 / THE FILE JOURNEY</p>
+    <h2>From your device.<br>To the <em>right hands.</em></h2>
+    <p>Follow the same three stages every time: submit a file, review the checks, then decide whether to share it.</p>
+  </div>
+  <div class="process-grid">
+    <article>
+      <span class="step-number">01</span>{{ icon('upload') }}
+      <h3>Choose a file.</h3>
+      <p>Select a supported document or image up to 50 MiB. The server checks its name, type, size and structure.</p>
+      <span class="process-foot">TXT · PNG · JPEG · PDF · DOCX · CSV · HTML · XML · SVG</span>
+    </article>
+    <article>
+      <span class="step-number">02</span>{{ icon('shield') }}
+      <h3>Review its checks.</h3>
+      <p>Local antivirus and YARA-X inspect the content. OCR-assisted DLP is available for images and PDF when Tesseract is installed. The report shows what ran.</p>
+      <span class="process-foot">VALIDATE / INSPECT / NORMALIZE / ENCRYPT</span>
+    </article>
+    <article>
+      <span class="step-number">03</span>{{ icon('link') }}
+      <h3>Share by code.</h3>
+      <p>Files stay private until you create a single-use code. It expires after fifteen minutes, and you can revoke it first.</p>
+      <span class="process-foot">OPTIONAL / ONE DOWNLOAD</span>
+    </article>
+  </div>
+</section>
+
+<section class="security-section" id="security">
+  <div>
+    <p class="eyebrow">02 / SECURITY WITH BOUNDARIES</p>
+    <h2>A scan result<br>is a <em>boundary,</em><br>not a guarantee.</h2>
+    <p>SecureVault combines local checks, reduced-feature document processing, encrypted storage and owner-controlled access. Its report records what happened so you can make an informed choice.</p>
+    <a class="text-link" href="{{ url_for('register') }}">Create your account {{ icon('arrow') }}</a>
+  </div>
+  <div class="security-list">
+    <div>{{ icon('file') }}<span>File structure and local YARA-X rules</span><small>01</small></div>
+    <div>{{ icon('image') }}<span>Metadata removal and optional OpenCV cleanup</span><small>02</small></div>
+    <div>{{ icon('key') }}<span>Optional TOTP and encrypted storage</span><small>03</small></div>
+    <div>{{ icon('clock') }}<span>Single-use sharing and tamper-evident activity</span><small>04</small></div>
+    <p>ClamAV and Tesseract are local integrations. A missing scanner is reported. A no-match result does not prove a file is harmless.</p>
+  </div>
+</section>
 {% endblock %}

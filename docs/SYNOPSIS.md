@@ -43,7 +43,7 @@ To design, implement and evaluate an explainable secure file-upload workflow tha
 
 | Limit or capability | Implemented value |
 | --- | --- |
-| Maximum upload size | 5 MiB per file |
+| Maximum upload size | 50 MiB per file |
 | Per-account storage | 500,000,000 bytes (500 MB decimal) |
 | Per-account file count | 200 files |
 | Self-registration | Maximum five accounts by default; configurable |

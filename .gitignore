@@ -9,3 +9,4 @@ docs/rendered/
 .test-run*/
 pytest-cache-files-*/
 .clamav/
+/backups/
