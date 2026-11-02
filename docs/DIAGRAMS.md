@@ -6,11 +6,18 @@ These Mermaid diagrams are editable design sources. GitHub renders Mermaid block
 
 ```mermaid
 flowchart LR
-    B[Browser with HTML forms] -->|HTTP locally or HTTPS through proxy| W[Waitress]
+    B[Browser with HTML forms] --> W[Waitress]
     W --> A[Flask routes and security controls]
     A --> V[Validation and normalization]
-    V --> C[Optional local ClamAV process]
-    V --> E[Fernet encryption]
+    V --> Y[Local YARA-X rules]
+    V --> C[ClamAV original scan; required by default]
+    C --> X[Format-specific reconstruction]
+    X --> O[Optional OpenCV image cleanup]
+    X --> T[Native Tesseract when installed]
+    O --> P[Pattern-based DLP and sharing policy]
+    T --> P
+    P --> C2[ClamAV scan of changed output]
+    C2 --> E[Fernet encryption]
     E --> F[(Private encrypted vault)]
     A <--> D[(SQLite metadata and sessions)]
     A --> L[HMAC audit chain]
@@ -26,8 +33,10 @@ flowchart LR
     U[Registered user] -->|Credentials, upload, file operation| S((Secure File Upload System))
     S -->|Status, file attachment, activity| U
     O[System operator] -->|Environment, keys and scanner policy| S
-    S -->|Normalized content| C[Optional ClamAV]
-    C -->|Clean, detected or error| S
+    S -->|Original file bytes| Y[Local YARA-X rules]
+    S -->|Image/PDF page pixels| T[Native Tesseract when installed]
+    Y -->|Rule match or no match| S
+    T -->|Transient extracted text; never stored| S
 ```
 
 ## Level 1 DFD
@@ -60,6 +69,8 @@ erDiagram
     USERS ||--o{ FILES : owns
     USERS ||--o{ SESSIONS : authenticates
     USERS |o--o{ EVENTS : generates
+    USERS ||--o{ SHARES : creates
+    FILES ||--o{ SHARES : permits
     USERS {
         integer id PK
         text username UK
@@ -77,6 +88,8 @@ erDiagram
         text mime
         text sha256
         text scan
+        text processing
+        text security_report
         text created_at
     }
     SESSIONS {
@@ -92,6 +105,15 @@ erDiagram
         text created_at
         text chain_mac
     }
+    SHARES {
+        integer id PK
+        integer owner_id FK
+        text file_id FK
+        text token_hash UK
+        integer expires_at
+        integer used_at
+        text created_at
+    }
 ```
 
 ## Upload sequence
@@ -101,16 +123,27 @@ sequenceDiagram
     actor User
     participant App as Flask application
     participant Validator
-    participant Scanner as Optional ClamAV
+    participant Yara as YARA-X rules
+    participant OCR as Optional Tesseract OCR
+    participant Scanner as ClamAV required by default
     participant DB as SQLite
     participant Vault as Encrypted filesystem
     User->>App: POST file and CSRF token
     App->>DB: Check session and expiry
     App->>Validator: Name, MIME and bounded bytes
-    Validator->>Validator: Signature, decode, dimensions, normalize
-    alt Configured scanner
-        Validator->>Scanner: Scan normalized content
-        Scanner-->>Validator: Result or timeout
+    Validator->>Validator: Signature, decode, dimensions and parser limits
+    Validator->>Yara: Scan original bytes
+    Yara-->>Validator: Rule names, no match or error
+    Validator->>Scanner: Scan original bytes
+    Scanner-->>Validator: Clean, detection, error or timeout
+    Validator->>Validator: Reconstruct supported format
+    opt Tesseract is installed; image or PDF input
+        Validator->>OCR: OCR bounded image/page
+        OCR-->>Validator: Transient text and OCR status
+    end
+    opt The normalized output changed
+        Validator->>Scanner: Scan changed output
+        Scanner-->>Validator: Clean, detection, error or timeout
     end
     alt Any validation or scanning error
         App->>DB: Audit rejection

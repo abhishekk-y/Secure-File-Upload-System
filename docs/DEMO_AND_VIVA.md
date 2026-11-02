@@ -73,11 +73,11 @@ No. It is HMAC-linked and detects changes to retained records. Removing the fina
 
 ### What is fail-closed scanning?
 
-If scanning is configured, detection, an error or a timeout rejects the upload. Required mode also rejects missing scanner configuration. The default demo mode is explicitly labeled unscanned.
+ClamAV is required by default. Detection, an error or a timeout rejects the upload; missing scanner configuration also blocks uploads. If an operator explicitly disables required scanning for an isolated UI walkthrough, that mode must be described as unscanned and must not be used to claim antivirus coverage.
 
 ### Why not support all file formats?
 
-Different formats require different parsers and policies. Restricting the initial format set keeps the attack surface and acceptance tests manageable. PDF and Office support need a separate content-disarm and quarantine design.
+Different formats require different parsers and policies. Restricting the allowlist keeps the attack surface and acceptance tests manageable. SecureVault rebuilds selected PDF, DOCX and markup inputs into reduced-feature representations, but this process is not commercial content disarm and does not preserve all original features.
 
 ### Which SDLC model is used?
 
@@ -89,7 +89,7 @@ Verification checks whether implementation satisfies requirements. Validation ch
 
 ### What are the main remaining risks?
 
-Host/key compromise, parser vulnerabilities, distributed abuse, missing recovery, optional antivirus, audit truncation and operational backup failures. These are documented rather than hidden.
+Host/key compromise, parser vulnerabilities, distributed abuse, missing recovery, limited local detection, audit truncation and operational backup failures. These are documented rather than hidden.
 
 ## Submission checklist
 
@@ -97,6 +97,6 @@ Host/key compromise, parser vulnerabilities, distributed abuse, missing recovery
 - Add only genuine institutional signatures, declarations and acknowledgements.
 - Review the code and explain every security feature you demonstrate.
 - Capture final screenshots from the version submitted.
-- Include the synopsis, report, diagram sources, test evidence and setup instructions.
+- Include the synopsis, report, diagram sources, test evidence and local run instructions.
 - Keep keys, live databases, uploaded files and local environments out of GitHub.
 - Follow the institution's assistance-disclosure and reference-format requirements.

@@ -24,9 +24,10 @@ from PIL import Image, UnidentifiedImageError
 import pyotp
 import qrcode
 from werkzeug.security import check_password_hash, generate_password_hash
+from .security_engines import MIMES, RECONSTRUCT, reconstruct, inspect_content, ocr_text
 
 MAX_FILE = 5 * 1024 * 1024
-QUOTA = 50 * 1024 * 1024
+QUOTA = 500_000_000
 
 
 def _find_clamscan():
@@ -52,6 +53,7 @@ def _find_clamscan():
 def create_app(test_config=None):
     app = Flask(__name__, instance_relative_config=True)
     detected_scanner = _find_clamscan()
+    trusted_hosts = os.getenv('TRUSTED_HOSTS') or 'localhost,127.0.0.1'
     app.config.from_mapping(
         MAX_CONTENT_LENGTH=MAX_FILE + 128 * 1024,
         MAX_FORM_MEMORY_SIZE=64 * 1024,
@@ -59,9 +61,11 @@ def create_app(test_config=None):
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Lax',
         SESSION_COOKIE_SECURE=os.getenv('APP_HTTPS') == '1',
+        TRUSTED_HOSTS=[host.strip() for host in trusted_hosts.split(',') if host.strip()],
         PERMANENT_SESSION_LIFETIME=timedelta(minutes=30),
         SCANNER=detected_scanner,
-        REQUIRE_SCAN=os.getenv('REQUIRE_SCAN') == '1',
+        REQUIRE_SCAN=os.getenv('REQUIRE_SCAN', '1') == '1',
+        MAX_USERS=int(os.getenv('MAX_USERS', '5')),
         DATA_DIR=os.getenv('DATA_DIR', app.instance_path),
         RATELIMIT_STORAGE_URI=os.getenv('RATELIMIT_STORAGE_URI', 'memory://'),
     )
@@ -128,6 +132,8 @@ def create_app(test_config=None):
           used_at INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
         CREATE INDEX IF NOT EXISTS files_owner ON files(owner_id);
         CREATE INDEX IF NOT EXISTS events_user ON events(user_id, id);
+        CREATE TABLE IF NOT EXISTS blocked_hashes (
+          sha256 TEXT PRIMARY KEY, label TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
         ''')
         columns = {row['name'] for row in db().execute('PRAGMA table_info(users)')}
         for name, kind in [('totp_secret', 'BLOB'), ('totp_pending', 'BLOB'), ('totp_last', 'INTEGER DEFAULT -1')]:
@@ -137,6 +143,8 @@ def create_app(test_config=None):
         file_columns = {row['name'] for row in db().execute('PRAGMA table_info(files)')}
         if 'processing' not in file_columns:
             db().execute("ALTER TABLE files ADD COLUMN processing TEXT NOT NULL DEFAULT 'Not recorded for older upload'")
+        if 'security_report' not in file_columns:
+            db().execute("ALTER TABLE files ADD COLUMN security_report TEXT NOT NULL DEFAULT '{}'")
         if 'chain_mac' not in event_columns:
             db().execute('ALTER TABLE events ADD COLUMN chain_mac TEXT')
         db().commit()
@@ -202,15 +210,23 @@ def create_app(test_config=None):
             elif not 12 <= len(password) <= 128:
                 flash('Use a password between 12 and 128 characters.', 'error')
             else:
+                password_hash = generate_password_hash(password, method='scrypt:32768:8:3')
+                connection = db()
+                connection.execute('BEGIN IMMEDIATE')
                 try:
-                    cursor = db().execute('INSERT INTO users(username,password_hash) VALUES(?,?)',
-                                          (username, generate_password_hash(password, method='scrypt:32768:8:3')))
-                    db().commit()
-                    event('Account created', user_id=cursor.lastrowid)
-                    flash('Account created. Sign in to your vault.', 'success')
-                    return redirect(url_for('login'))
+                    count = connection.execute('SELECT COUNT(*) FROM users').fetchone()[0]
+                    if count >= app.config['MAX_USERS']:
+                        connection.rollback()
+                        flash(f'This installation is limited to {app.config["MAX_USERS"]} accounts.', 'error')
+                    else:
+                        cursor = connection.execute('INSERT INTO users(username,password_hash) VALUES(?,?)',
+                                                    (username, password_hash))
+                        connection.commit()
+                        event('Account created', user_id=cursor.lastrowid)
+                        flash('Account created. Sign in to your vault.', 'success')
+                        return redirect(url_for('login'))
                 except sqlite3.IntegrityError:
-                    db().rollback()
+                    connection.rollback()
                     flash('That username is unavailable.', 'error')
         return render_template('auth.html', registering=True)
 
@@ -348,23 +364,62 @@ def create_app(test_config=None):
     @app.get('/vault')
     @login_required
     def dashboard():
-        files = db().execute('SELECT * FROM files WHERE owner_id=? ORDER BY created_at DESC, id',
-                             (g.user['id'],)).fetchall()
+        files = [dict(row) for row in db().execute(
+            'SELECT * FROM files WHERE owner_id=? ORDER BY created_at DESC, id',
+            (g.user['id'],)).fetchall()]
+        # Put the key local checks beside each file so users can see what the
+        # upload pipeline actually ran without opening a separate report.
+        for file in files:
+            try:
+                report = json.loads(file.get('security_report') or '{}')
+            except (TypeError, json.JSONDecodeError):
+                report = {}
+            yara = report.get('yara_x', {})
+            dlp = report.get('dlp', {})
+            ocr = report.get('ocr', {})
+            file['yara_status'] = {
+                'no_match': 'no match', 'match': 'rule match',
+            }.get(yara.get('status'), 'not recorded')
+            file['dlp_status'] = {
+                'no_match': 'no match', 'review': 'review',
+                'not_applicable': 'not applicable',
+            }.get(dlp.get('status'), 'not recorded')
+            file['ocr_status'] = {
+                'text_found': 'text checked', 'no_text': 'no text',
+                'not_applicable': 'not applicable', 'unavailable': 'unavailable',
+            }.get(ocr.get('status'), 'not recorded')
+            file['share_allowed'] = report.get('share_allowed', False)
         used = sum(row['size'] for row in files)
         return render_template('dashboard.html', files=files, used=used, quota=QUOTA,
                                scanner=bool(app.config['SCANNER']), required=app.config['REQUIRE_SCAN'])
 
+    @app.get('/demo/yara-sample')
+    @login_required
+    @limiter.limit('10 per minute')
+    def yara_demo_sample():
+        """Serve the inert text fixture used to demonstrate a local YARA-X match."""
+        sample = Path(app.root_path).parent / 'samples' / 'yara-demo-powershell.txt'
+        if not sample.is_file():
+            abort(404)
+        return send_file(sample, mimetype='text/plain', as_attachment=True,
+                         download_name='securevault-safe-yara-demo.txt', max_age=0)
+
     def validate(upload):
         name = upload.filename or ''
-        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9 _-]{0,95}\.(txt|png|jpg|jpeg)', name, re.I):
-            raise ValueError('Use a simple filename with one extension: TXT, PNG, JPG or JPEG.')
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9 _-]{0,95}\.(txt|png|jpg|jpeg|pdf|docx|csv|html|htm|xml|svg)', name, re.I):
+            raise ValueError('Use a simple filename with one supported document or image extension.')
         raw = upload.read(MAX_FILE + 1)
         if not raw or len(raw) > MAX_FILE:
             raise ValueError('Files must be nonempty and no larger than 5 MiB.')
         ext = name.rsplit('.', 1)[1].lower()
-        expected_mime = {'txt': 'text/plain', 'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg'}[ext]
-        if upload.mimetype not in (expected_mime, 'application/octet-stream', ''):
+        original = raw
+        expected_mime = MIMES[ext]
+        compatible = [expected_mime, 'application/octet-stream', '']
+        if ext == 'xml': compatible.append('text/xml')
+        if upload.mimetype not in compatible:
             raise ValueError('The declared MIME type does not match the filename extension.')
+        if ext in RECONSTRUCT:
+            return name, raw, expected_mime, original
         if ext == 'txt':
             try:
                 content = raw.decode('utf-8')
@@ -397,7 +452,7 @@ def create_app(test_config=None):
             if len(raw) > MAX_FILE:
                 raise ValueError('The normalized image exceeds 5 MiB.')
             mime = 'image/png' if expected == 'PNG' else 'image/jpeg'
-        return name, raw, mime
+        return name, raw, mime, original
 
     def _scanner_db_args():
         """Build database arguments for portable ClamAV installs."""
@@ -424,7 +479,7 @@ def create_app(test_config=None):
             result = subprocess.run(cmd, capture_output=True, timeout=30)
             if result.returncode == 1:
                 # Extract the threat name from ClamAV output
-                stdout = result.stdout.decode('utf-8', errors='replace').strip()
+                stdout = getattr(result, 'stdout', b'').decode('utf-8', errors='replace').strip()
                 threat = 'unknown threat'
                 if 'FOUND' in stdout:
                     # ClamAV output format: /path/to/file: ThreatName FOUND
@@ -433,7 +488,7 @@ def create_app(test_config=None):
                         threat = parts[-1].replace('FOUND', '').strip()
                 raise ValueError(f'Antivirus detected a threat: {threat}. File rejected.')
             if result.returncode != 0:
-                stderr = result.stderr.decode('utf-8', errors='replace').strip()
+                stderr = getattr(result, 'stderr', b'').decode('utf-8', errors='replace').strip()
                 app.logger.warning('ClamAV error (exit %d): %s', result.returncode, stderr[:200])
                 raise ValueError('Antivirus scanner error. Upload rejected for safety.')
             return 'ClamAV: clean'
@@ -466,12 +521,33 @@ def create_app(test_config=None):
         try:
             if not file:
                 raise ValueError('Choose a file to upload.')
-            name, raw, mime = validate(file)
+            name, raw, mime, original = validate(file)
+            extension = name.rsplit('.', 1)[1].lower()
+            inspect_content(original, '', db())
+            scan_result = scan(original)
+            extracted = raw.decode('utf-8') if mime == 'text/plain' else ''
+            reconstruction = 'Image re-encoded without original metadata' if mime in ('image/png', 'image/jpeg') else 'UTF-8 validated'
+            if extension in RECONSTRUCT:
+                raw, extracted, reconstruction = reconstruct(raw, extension, root)
+            ocr_extracted, ocr_result = ocr_text(original, mime, root)
+            if ocr_extracted:
+                extracted = (extracted + '\n' + ocr_extracted)[:500_000]
+            security_report = inspect_content(original, extracted, db())
+            security_report['reconstruction'] = reconstruction
+            security_report['ocr'] = ocr_result
+            if mime in ('image/png', 'image/jpeg', 'application/pdf') and ocr_result['status'] not in ('text_found', 'no_text'):
+                # Keep the file private if OCR-assisted DLP could not inspect a
+                # supported visual format. Storage is allowed; sharing is not.
+                security_report['share_allowed'] = False
             document_result = None
             if request.form.get('document_scan') == '1':
                 from .document_scanner import scan_document
                 raw, document_result = scan_document(raw, mime)
-            scan_result = scan(raw)
+            if raw != original:
+                scan_result = scan(raw)
+            security_report['antivirus'] = scan_result
+            security_report['antivirus_scope'] = 'Original and stored representation' if raw != original else 'Original equals stored representation'
+            security_report['stored_sha256'] = hashlib.sha256(raw).hexdigest()
             identity = secrets.token_hex(16)
             encrypted = cipher.encrypt(raw)
             connection = db()
@@ -481,7 +557,7 @@ def create_app(test_config=None):
                                               (g.user['id'],)).fetchone()
             if used + len(raw) > QUOTA:
                 connection.rollback()
-                raise ValueError('Your 50 MiB storage quota would be exceeded.')
+                raise ValueError('Your 500 MB storage quota would be exceeded.')
             if count >= 200:
                 connection.rollback()
                 raise ValueError('Your vault has reached its 200-file limit. Delete a file first.')
@@ -489,9 +565,9 @@ def create_app(test_config=None):
             try:
                 with target.open('xb') as stream:
                     stream.write(encrypted)
-                connection.execute('INSERT INTO files(id,owner_id,name,size,mime,sha256,scan,processing) VALUES(?,?,?,?,?,?,?,?)',
+                connection.execute('INSERT INTO files(id,owner_id,name,size,mime,sha256,scan,processing,security_report) VALUES(?,?,?,?,?,?,?,?,?)',
                                    (identity, g.user['id'], name, len(raw), mime,
-                                    hashlib.sha256(raw).hexdigest(), scan_result, document_result or 'Not requested'))
+                                    hashlib.sha256(raw).hexdigest(), scan_result, document_result or 'Not requested', json.dumps(security_report)))
                 connection.commit()
             except Exception:
                 connection.rollback()
@@ -502,6 +578,8 @@ def create_app(test_config=None):
                 event('Document processed', document_result)
                 flash(document_result, 'success')
             flash('File validated, encrypted and saved to your vault.', 'success')
+            if not security_report['share_allowed']:
+                flash('Sensitive-data indicators found. Private storage is allowed, but sharing is blocked. Review the security report.', 'error')
         except ValueError as error:
             event('Upload rejected', str(error))
             flash(str(error), 'error')
@@ -542,13 +620,21 @@ def create_app(test_config=None):
             'file_name': row['name'], 'mime': row['mime'], 'normalized_size_bytes': row['size'],
             'sha256': row['sha256'], 'uploaded_at_utc': row['created_at'],
             'validation': 'Passed filename, MIME, decoded content and resource checks at upload',
-            'normalization': 'Image reconstructed without original metadata' if row['mime'] != 'text/plain' else 'UTF-8 and control-character checks',
+            'normalization': json.loads(row['security_report']).get('reconstruction', 'Not recorded for older upload'),
+            'security_checks': json.loads(row['security_report']),
             'document_processing': row['processing'], 'antivirus': row['scan'],
             'integrity': 'Fernet authentication and plaintext SHA-256 verified at report generation',
             'storage': 'Server-side Fernet encryption; owner authorization enforced',
             'limitation': 'This report is not a malware-free certificate or independent attestation.'}
         return send_file(io.BytesIO(json.dumps(report, indent=2).encode()), mimetype='application/json',
                          as_attachment=True, download_name=row['name'] + '.inspection.json')
+
+    @app.get('/files/<identity>/report')
+    @login_required
+    def file_report(identity):
+        row = owned(identity)
+        verified_bytes(row)
+        return render_template('file_report.html', file=row, report=json.loads(row['security_report']))
 
     @app.get('/files/<identity>/preview')
     @login_required
@@ -564,6 +650,9 @@ def create_app(test_config=None):
     @limiter.limit('10 per minute')
     def create_share(identity):
         row = owned(identity)
+        if not json.loads(row['security_report']).get('share_allowed', False):
+            flash('Sharing is blocked by sensitive-data policy or missing historical inspection. Re-upload a redacted file.', 'error')
+            return redirect(url_for('dashboard'))
         # Verify availability before issuing a capability; it will be checked again on redemption.
         verified_bytes(row)
         code = secrets.token_hex(12).upper()
@@ -616,6 +705,8 @@ def create_app(test_config=None):
             if row is None or row['used_at'] is not None or row['expires_at'] <= int(time.time()):
                 flash('This code is invalid, expired, revoked or already used.', 'error')
                 return render_template('receive.html'), 404
+            if not json.loads(row['security_report']).get('share_allowed', False):
+                abort(403, description='Sharing is restricted by this file inspection policy.')
             raw = verified_bytes(row)
             # Compare-and-update makes the capability single-use under concurrent requests.
             cursor = db().execute('UPDATE shares SET used_at=? WHERE token_hash=? AND used_at IS NULL AND expires_at>?',
@@ -658,7 +749,9 @@ def create_app(test_config=None):
     @limiter.exempt
     def health():
         db().execute('SELECT 1').fetchone()
-        scanner_info = _check_scanner_health()
+        # Health polling must not spawn an expensive scanner for anonymous callers.
+        scanner_info = {'configured': bool(app.config['SCANNER']),
+                        'status': 'Result determined for each upload; configuration is not a scan verdict'}
         return {
             'status': 'ok',
             'antivirus': scanner_info,
@@ -667,6 +760,11 @@ def create_app(test_config=None):
 
     for status in (400, 403, 404, 409, 413, 429, 500):
         def error_page(error):
+            # A bad Host header prevents URL generation in the shared template.
+            # Return a fixed body for 400s so Host validation cannot recurse into
+            # another routing error while building the error page.
+            if error.code == 400:
+                return 'Invalid request.', 400, {'Content-Type': 'text/plain; charset=utf-8'}
             return render_template('error.html', error=error), error.code
         app.register_error_handler(status, error_page)
     return app

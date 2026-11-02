@@ -53,7 +53,7 @@ class AcademicPDF(BaseDocTemplate):
             title = flowable.getPlainText()
             if title.startswith('Chapter 1'):
                 self.body_start = self.page
-            page = str(self.page-self.body_start+1) if self.body_start else roman(self.page-1)
+            page = self.page-self.body_start+1 if self.body_start else -(self.page-1)
             key = 'heading-' + str(self.page) + '-' + str(len(title))
             self.canv.bookmarkPage(key)
             self.notify('TOCEntry', (0, title, page, key))
@@ -87,6 +87,7 @@ def make_pdf(stem):
             if (not toc_added) and (not report or value=='Abstract'):
                 story.append(p('Table of Contents','h1'))
                 toc=TableOfContents()
+                toc.formatter=lambda number: roman(-number) if number<0 else str(number)
                 toc.levelStyles=[ParagraphStyle('toc',fontName='Academic',fontSize=12,leading=18,spaceBefore=5)]
                 story.extend([toc,PageBreak()])
                 if report:
@@ -152,7 +153,7 @@ def make_slides():
         ('Research and uniqueness','Integration with visible evidence',['Eian et al. (2020): practical secure-development guidance.','Kudriavtseva and Gadyatskaya (2022): secure SDLC practices.','Neef and Oudeh (2024): varied upload-scanner evaluation.','Contribution: integrated controls, transparent UI and reproducible tests.','No claim of novel cryptography or a new malware detector.'],None,'The report contains a deliberately small three-paper descriptive corpus. Do not present it as a comprehensive bibliometric study.'),
         ('Validation results','Measured evidence, stated limits',[f'{total} tests in the recorded suite; {failed} failures; {errors} errors.','Cases include metadata removal, ownership and code concurrency.','Scanner tests include skewed-page and no-boundary fixtures.','Antivirus subprocess outcomes are mocked in tests.','See test-results.xml and TESTING.md for dates and scan results.'],None,'Read the current evidence rather than memorizing a stale count. This run is not proof that vulnerabilities are absent.'),
         ('Live demonstration','A short reproducible walkthrough',['Sign in and upload samples/demo-notes.txt.','Scan samples/document-photo.png with OpenCV enabled.','Preview and download the processed image.','Create a share code and redeem it once.','Try reusing the code; inspect activity and security settings.'],None,'Prepare two browser sessions. Use synthetic files. Do not expose authenticator setup secrets during a recorded demonstration.'),
-        ('Limitations and next steps','What the project does not claim',['ClamAV requires separate operator installation.','Audit suffix deletion needs external checkpoints to detect.','No recovery codes or managed key rotation.','Docker files supplied; local container execution unverified.','Future: passkeys, worker queues and object storage.'],None,'Be candid about operational boundaries. These are future work, not buttons pretending to work.'),
+        ('Limitations and next steps','What the project does not claim',['ClamAV and Tesseract require native installation.','Audit suffix deletion needs external checkpoints to detect.','No recovery codes or managed key rotation.','YARA-X is a small local ruleset, not a full malware database.','Future: passkeys, worker queues and object storage.'],None,'Be candid about operational boundaries. These are future work, not buttons pretending to work.'),
         ('References','Primary sources and reproducible artifacts',['OWASP File Upload and Password Storage Cheat Sheets','NIST SP 800-218 Secure Software Development Framework','OpenCV geometric transformations and CLAHE documentation','Flask, Pillow, cryptography and PyOTP documentation','Full URLs and research records: docs/PROJECT_REPORT.md'],None,'Open the report references for the exact URLs. Invite questions about the design tradeoffs.'),
     ]
     slides = [slides[0],
@@ -163,7 +164,7 @@ def make_slides():
         slides[8],slides[9],slides[10],
         ('SDLC and research','Requirements become reproducible checks',['Requirements -> threat model -> compare designs -> implement.','Verify positive, negative and concurrent behavior; fix defects.','Deploy with protected keys, HTTPS and dependency review.','Research: Eian (2020), Kudriavtseva (2022), Neef (2024).','Uniqueness: integrated controls, visible state and inspectable tests.'],None,'The three-paper corpus is descriptive, not comprehensive. Research detection rates are not project results.'),
         slides[14],
-        ('Live demo and limitations','Show the working path',['Upload demo-notes.txt; scan document-photo.png.','Preview the processed image; create and redeem a code.','Attempt code reuse; inspect activity and account security.','ClamAV requires installation; no OCR or recovery codes.','Future: external audit checkpoints, passkeys and worker queues.'],None,'Use the samples folder. Docker execution and public production hosting are not claimed. Keep authenticator secrets out of screenshots.'),
+        ('Live demo and limitations','Show the working path',['Upload an ordinary sample and inspect YARA-X status.','Try a rule-matching sample and explain the rejection.','Upload a printed document image; inspect OCR/DLP status.','ClamAV and Tesseract need native installation.','Future: external audit checkpoints, passkeys and worker queues.'],None,'Use synthetic samples only. Native OCR and ClamAV require local setup. Keep authenticator secrets out of screenshots.'),
         slides[17]]
     deck=Presentation();deck.slide_width=Inches(13.333);deck.slide_height=Inches(7.5)
     pdf=canvas.Canvas(str(DOCS/'PRESENTATION.pdf'),pagesize=(960,540))
@@ -211,4 +212,5 @@ if __name__=='__main__':
         ((570,735,1130,920),'Shares','Owner and file ID\nCode hash, expiry and used time'),
     ],[((650,270),(260,385),'1 : many'),((780,270),(780,385),'1 : many'),((940,270),(1300,385),'1 : many'),((800,620),(800,735),'1 : many')],size=(1600,980))
     for stem in ('SYNOPSIS','PROJECT_REPORT'):make_pdf(stem)
-    make_slides()
+    import runpy
+    runpy.run_path(str(ROOT/'scripts'/'build_presentation.py'), run_name='__main__')

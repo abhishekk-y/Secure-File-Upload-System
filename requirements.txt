@@ -2,14 +2,12 @@ Flask==3.1.3
 Flask-WTF==1.3.0
 Flask-Limiter==4.1.1
 waitress==3.0.2
-Pillow==12.3.0
+Pillow==13.0.0
 cryptography==50.0.1
 pyotp==2.10.0
 qrcode==8.2
 opencv-python-headless==4.14.0.94
-# Phase 2: Advanced Security Engines
-pypdf>=6.0.0
-defusedxml>=0.7.1
-nh3>=0.3.0
-oletools>=0.60
-pefile>=2024.0.0
+pypdfium2==5.13.0
+defusedxml==0.7.1
+nh3==0.3.7
+yara-x==1.22.1

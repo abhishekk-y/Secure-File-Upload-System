@@ -1,36 +1,61 @@
-# Testing and validation
+# Testing and verification record
 
-## Recorded automated execution
+This record reports evidence from the tested local source version. It is not a security certification, penetration-test report or proof that all vulnerabilities are absent.
 
-The committed JUnit file is the machine-readable evidence. The run on 17 September 2026 completed 49 tests with zero failures, errors or skips in 272.530 seconds. It is a regression suite, not proof of absence of vulnerabilities. A subsequent run replaces that evidence when implementation changes require it.
+## Latest regression execution
 
-## Requirements and verification matrix
+On **3 November 2026**, the full pytest suite completed with **93 passed, 0 failed** in **65.70 seconds**. The test cases cover account and session controls, CSRF, file allowlists, parser bounds, document reconstruction, image normalization, DLP decisions, YARA-X matches, scanner failure handling, encrypted storage, authorization, integrity, single-use sharing and OpenCV document processing.
 
-| Requirement | Verification | Expected behavior |
+Repeat the suite from the repository root:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pytest -q --junitxml=docs/test-results.xml
+```
+
+The GitHub Actions workflow runs pytest, Bandit and pip-audit on pushes and pull requests. A local pass does not mean that the remote workflow has completed successfully.
+
+## Verification summary
+
+| Check | Result | Scope and boundary |
 | --- | --- | --- |
-| Account access | Registration, password, session and TOTP tests | Invalid credentials and replayed OTPs rejected |
-| File allowlist | Extension, MIME, signature and UTF-8 cases | Mismatched or malformed input rejected |
-| Normalization | EXIF, trailing-content and pixel-limit fixtures | Metadata removed; excessive dimensions rejected |
-| Private storage | Ciphertext and integrity tests | Plaintext not stored as the vault blob; corruption rejected |
-| Authorization | Two independently authenticated accounts | Another account cannot download, preview, delete or share a file |
-| Quotas | Size, total bytes and file-count boundaries | Over-limit requests rejected |
-| CSRF | Missing and invalid token requests | State-changing request rejected |
-| Audit | Event field changes and interior deletion | Verification reports invalid history |
-| Sharing | Expiry, revocation, deletion and simultaneous redemption | At most one successful redemption; invalid codes rejected |
-| Antivirus adapter | Mocked detection, timeout and failures | Upload rejected when scanner fails or detects a threat |
+| Functional/security regression tests | 93 passed, 0 failed | Defined automated cases; not exhaustive testing |
+| Bandit static analysis | 0 high, 0 medium, 7 low findings | Low findings are subprocess import/call alerts and the XML output serializer import; untrusted XML input uses `defusedxml`; subprocesses use argument arrays and timeouts |
+| pip-audit | No known advisories in the resolved dependency graph on 2 November 2026, after Pillow was updated to 13.0.0 | Advisories can be published later; rerun before a new release |
+| ClamAV benign fixture | Passed with local ClamAV 1.5.4 and current-at-test signature database | Shows that the scanner ran on the fixture, not broad detection quality |
+| ClamAV custom local signature fixture | Expected local rule signature detected | Controlled local integration fixture, not a commercial threat feed |
+| EICAR scanner fixture | Inconclusive; ClamAV returned exit code 2 | Not counted as a successful detection check; the application rejects scanner errors |
+| OCR-to-DLP wiring | Automated controlled-response test passed | Native Tesseract is not installed on the Windows development workstation; do not claim the executable ran there |
+| Browser review | Login, vault, upload dialog, report, MFA/session controls, sharing and receiving pages were observed | Screenshots are interface examples; current security verdicts must be demonstrated with fresh uploads |
 
-## Static analysis
+## Requirements-to-test matrix
 
-Bandit was executed on 20 September 2026 against `app` and `run.py`. Its JSON report records zero high, zero medium and two low severity findings concerning subprocess use. The adapter passes a fixed argument list without a shell, uses an operator-configured executable and sets a timeout. These controls explain the retained use; low findings are not silently suppressed. Re-run after backend changes.
+| Requirement | Test focus | Expected behavior |
+| --- | --- | --- |
+| Account access | Registration cap, password, sessions, MFA and replay | Invalid input and reused codes are denied |
+| Upload allowlist | Extension, MIME, signatures, UTF-8 and malformed formats | Unsupported or inconsistent bytes are rejected |
+| Normalization | Image metadata, PDF/DOCX reconstruction, markup and CSV cases | Stored representation follows the format policy |
+| Resource bounds | File size, image pixels, PDF pages, parser output and worker timeout | Over-limit work is rejected safely |
+| Private storage | Ciphertext, hash and tampered blob | Plaintext is not the stored blob; integrity failure blocks retrieval |
+| Authorization | Multiple accounts and crafted identifiers | Another account cannot read, delete or share a file |
+| CSRF | Missing or invalid token on state-changing requests | Request is rejected |
+| Scanner policy | Detection, timeout, error and missing required scanner | Upload is rejected; scanner failure is never displayed as clean |
+| DLP and OCR policy | Sensitive patterns and controlled OCR text | Credentials are rejected; findings/unavailable checks can block sharing |
+| Share lifecycle | Expiry, revoke, reuse and concurrent redemption | At most one successful redemption |
+| Audit integrity | Modified fields and interior deletion | Activity chain reports invalid history |
 
-## Browser demonstration checks
+## Static-analysis notes
 
-On 20 September 2026 the local Waitress server started on loopback, demo-account login succeeded, the vault displayed real files and a text file was uploaded through the actual browser form. The success notice and updated file count were observed. Screenshots in `docs/screenshots` are from demonstration data, not customer files. Responsive screenshots and further checks are recorded as they are completed.
+Bandit reports seven low-severity findings and no medium/high findings. The subprocess calls invoke local scanner/parser programs using argument lists, never a shell command string, and have explicit timeouts. The XML library warning is for output construction/serialization; untrusted XML is parsed with `defusedxml`. These alerts are retained rather than suppressed.
 
-## Repeat the suite
+## Known unverified areas
 
-Create a virtual environment, install `requirements-dev.txt`, then run `python -m pytest -q --junitxml=docs/test-results.xml`. Run `python -m bandit -r app run.py -ll` and `python -m pip_audit -r requirements.txt` after installing those optional tools. CI performs these checks on pushes and pull requests; a local result does not imply a successful remote CI run.
+- Native Tesseract execution on the current workstation; the DLP handoff is tested using a controlled OCR response.
+- The EICAR ClamAV check, which returned an error instead of a detection result.
+- External penetration testing, formal accessibility certification, load testing and multi-instance behavior.
+- Commercial Deep CDR, multiple commercial antivirus engines and dynamic sandbox execution; none are included.
+- Restoring a real backup into a separate environment; no successful restore is claimed.
 
-## Boundaries
+## Safe test data
 
-Real ClamAV scanning and Docker container execution have not been verified on this workstation. Scanner tests use controlled subprocess responses. Load testing, external penetration testing, multi-node deployment and formal accessibility certification are not claimed. No performance service-level objective is asserted from the regression runtime.
+Use only synthetic content from `samples/`. `samples/yara-demo-powershell.txt` is inert text with recognizable strings for a local YARA-X rule. It is not executable malware. Do not upload real credentials, personal records or live malware as a presentation demonstration.

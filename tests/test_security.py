@@ -16,7 +16,8 @@ from app import MAX_FILE, QUOTA, create_app
 
 @pytest.fixture
 def app(tmp_path):
-    return create_app({'TESTING': True, 'DATA_DIR': str(tmp_path), 'RATELIMIT_ENABLED': False})
+    return create_app({'TESTING': True, 'DATA_DIR': str(tmp_path), 'RATELIMIT_ENABLED': False,
+                       'SCANNER': '', 'REQUIRE_SCAN': False})
 
 
 def token(client, page='/login'):
@@ -87,7 +88,7 @@ def test_upload_encrypt_download_delete(app):
     ('../escape.txt', b'text'), ('bad%00.txt', b'text'),
     ('fake.png', b'not an image'), ('empty.txt', b''),
     ('binary.txt', b'\x00\x01'), ('invalid.txt', b'\xff\xfe'),
-    ('vector.svg', b'<svg/>'), ('archive.zip', b'PK'),
+    ('vector.svg', b'<svg>'), ('archive.zip', b'PK'),
     ('document.pdf', b'%PDF-1.7'), ('<script>.txt', b'text'),
 ])
 def test_rejected_uploads(app, name, content):
@@ -191,10 +192,12 @@ def test_tampered_ciphertext_fails_closed(app):
 
 
 def test_limit_and_quota(app):
+    assert QUOTA == 500_000_000
     client = account(app)
     upload(client, 'big.txt', b'x' * (MAX_FILE + 1))
     assert not rows(app)
     upload(client)
+    assert b'MB of 500 MB' in client.get('/vault').data
     with sqlite3.connect(Path(app.config['DATA_DIR']) / 'vault.sqlite3') as db:
         db.execute('UPDATE files SET size=?', (QUOTA,))
     assert b'quota would be exceeded' in upload(client, 'second.txt').data
@@ -212,6 +215,34 @@ def test_security_headers(app):
     assert "frame-ancestors 'none'" in result.headers['Content-Security-Policy']
     assert 'HttpOnly' in result.headers['Set-Cookie']
     assert 'SameSite=Lax' in result.headers['Set-Cookie']
+
+
+def test_untrusted_host_is_rejected(app):
+    response = app.test_client().get('/', headers={'Host': 'attacker.invalid'})
+    assert response.status_code == 400
+
+
+def test_registration_is_capped_for_small_deployment(app):
+    client = app.test_client()
+    for index in range(5):
+        response = post(client, '/register', {
+            'username': f'person_{index}', 'password': 'correct horse battery!'
+        }, '/register')
+        assert b'Account created' in response.data
+    response = post(client, '/register', {
+        'username': 'person_six', 'password': 'correct horse battery!'
+    }, '/register')
+    assert b'limited to 5 accounts' in response.data
+    assert len(rows(app, 'users')) == 5
+
+
+def test_antivirus_is_required_by_default(tmp_path, monkeypatch):
+    monkeypatch.delenv('REQUIRE_SCAN', raising=False)
+    application = create_app({'TESTING': True, 'DATA_DIR': str(tmp_path), 'SCANNER': ''})
+    assert application.config['REQUIRE_SCAN'] is True
+    client = account(application)
+    assert b'Uploads are paused' in upload(client).data
+    assert not rows(application)
 
 
 def test_logout_revokes_copied_cookie(app):
@@ -292,8 +323,8 @@ def test_restart_preserves_encryption_and_files(app):
     client = account(app)
     upload(client)
     row = rows(app)[0]
-    restarted = create_app({'TESTING': True, 'DATA_DIR': app.config['DATA_DIR'], 'RATELIMIT_ENABLED': False})
+    restarted = create_app({'TESTING': True, 'DATA_DIR': app.config['DATA_DIR'], 'RATELIMIT_ENABLED': False,
+                            'SCANNER': '', 'REQUIRE_SCAN': False})
     other = restarted.test_client()
     post(other, '/login', {'username': 'alice', 'password': 'correct horse battery!'}, '/login')
     assert other.get(f"/files/{row['id']}/download").data == b'Private project notes'
-

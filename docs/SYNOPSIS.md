@@ -1,158 +1,156 @@
-# Secure File Upload System
+# SecureVault
 
-Project Synopsis
+## Project Synopsis
 
-Student: [Student name]
-Enrollment number: [Enrollment number]
-Programme and semester: [Programme and semester]
-Department: [Department]
-Institution: [College or university]
-Project guide: [Guide name and designation]
-Academic year: [Academic year]
+- **Student:** [Student name]
+- **Enrollment number:** [Enrollment number]
+- **Programme and semester:** [Programme and semester]
+- **Department:** [Department]
+- **Institution:** [College or university]
+- **Project guide:** [Guide name and designation]
+- **Academic year:** [Academic year]
 
 ## Abstract
 
-The Secure File Upload System is a web application that demonstrates how untrusted files can be accepted through a controlled processing pipeline. A user creates an account, signs in and uploads a permitted text or image file. The server validates the filename, declared MIME type, file signature, content structure and resource limits. Images are decoded and re-encoded to remove metadata and appended data. Accepted content is encrypted before being stored outside the public web directory. Downloads require ownership verification and an integrity check.
+SecureVault is a cybersecurity web application for accepting, inspecting and privately storing user files. It treats filenames and browser-declared content types as untrusted, validates supported content within explicit resource limits, applies local inspection policies and reconstructs selected formats into reduced-feature representations. Accepted files are stored as encrypted blobs outside the public web directory. Ownership checks and integrity verification protect retrieval, while optional time-based multi-factor authentication and expiring single-use share codes demonstrate account and access controls.
 
-The proposed system uses Python, Flask, SQLite, Pillow, cryptography, PyOTP and Waitress. Additional controls include cross-site request forgery protection, memory-hard password hashing, optional time-based two-factor authentication, revocable sessions, account quotas, rate limiting and a tamper-evident activity log. Controlled sharing uses short-lived, single-use codes. A local ClamAV adapter supports antivirus scanning when configured; the interface explicitly identifies files that were not scanned. Evaluation combines automated functional and security tests with a browser demonstration. The project follows an iterative secure software development life cycle covering planning, requirements, design, implementation, verification, deployment and maintenance.
+The implementation uses Python 3.12, Flask, Waitress and SQLite. Security layers include scrypt password hashing, CSRF protection, session revocation, rate limits, format-specific validation, local ClamAV antivirus, YARA-X rules, pattern-based DLP and an operator-managed SHA-256 denylist. Native Tesseract OCR can provide text from image and PDF inputs to the DLP checks. OpenCV optionally detects and corrects document-photo perspective. These controls have distinct roles and limitations; the project does not claim universal malware detection, commercial Deep CDR, multiple commercial antivirus engines or dynamic sandbox analysis. The work follows an iterative secure software development life cycle with requirements, threat-informed design, implementation, verification and maintenance activities.
 
 ## Problem statement
 
-An unrestricted upload form can allow executable files, misleading extensions, malformed images, oversized requests and unintended disclosure of private content. Filename and browser-provided MIME checks alone cannot establish that a file is appropriate to store. Images may also expose author, device or location metadata. A practical student project must show both preventive controls and the conditions under which those controls remain effective.
+An unrestricted file-upload feature can accept executable content disguised by a filename, malformed parser inputs, oversized requests or documents containing active content and unintended metadata. A filename extension and a browser-provided MIME type are only client claims. A file-management service also needs access control, private storage, integrity checks and a deliberate sharing model. Educational implementations must demonstrate both what their controls do and what they cannot guarantee.
 
-This project addresses that problem by combining independent checks with private encrypted storage and per-user authorization. Its scope is deliberately limited to TXT, PNG, JPG and JPEG so the validation rules can be explained and tested thoroughly.
+SecureVault addresses these concerns through a bounded allowlist, independent content checks, format-specific reconstruction, local detection layers, encrypted storage and owner-controlled retrieval. Its supported inputs are TXT, PNG, JPEG, PDF, DOCX, CSV, HTML, XML and restricted SVG. Generic archives, executables, legacy Office binaries and arbitrary formats are rejected.
 
-## Aim and objectives
+## Aim
 
-The aim is to implement and evaluate a secure file upload workflow that is understandable, reproducible and suitable for an academic demonstration.
+To design, implement and evaluate an explainable secure file-upload workflow that demonstrates layered input validation, privacy controls, local inspection, encrypted storage and controlled sharing.
 
-- Authenticate users and restrict each file operation to its owner.
-- Validate extension, declared MIME, magic bytes and decoded content rather than trusting a single signal.
-- Enforce a 5 MiB file limit, a 16-megapixel image limit, a 50 MiB account quota and a 200-file count limit.
-- Strip image metadata by re-encoding supported images and store only the normalized output.
-- Encrypt accepted files with authenticated encryption and verify them before download.
-- Support optional TOTP two-factor authentication and immediate session revocation.
-- Record security-relevant events in a per-account HMAC chain.
-- Share selected files through expiring, single-use codes that the owner can revoke.
-- Provide repeatable tests, deployment instructions and a documented secure SDLC.
+## Objectives
 
-## Background and research basis
+- Authenticate users and enforce ownership on file operations.
+- Check filename, MIME, content signatures where defined, parser structure and resource bounds.
+- Re-encode supported images to remove embedded metadata.
+- Reconstruct selected document formats to reduce active content and preserve only documented safe content.
+- Apply local YARA-X and ClamAV checks, with uploads rejected if required antivirus scanning is unavailable or fails.
+- Use OCR-assisted text checks for eligible image/PDF files when Tesseract is installed.
+- Encrypt accepted file content at rest and verify its integrity before access.
+- Provide optional TOTP multi-factor authentication, revocable sessions and a tamper-evident activity chain.
+- Permit deliberate sharing through hashed, expiring, single-use codes with owner revocation.
+- Verify implementation behavior with automated regression cases and a synthetic-data demonstration.
 
-OWASP's File Upload Cheat Sheet recommends combining allowlists, content inspection, storage separation, access restrictions and resource controls [R1]. The project applies those ideas to a small and explicitly bounded format set. OWASP's password guidance supports memory-hard password hashing; the implementation uses the documented scrypt configuration N=32768, r=8 and p=3 [R2]. NIST SP 800-218 provides the secure-development reference used to organize development and verification activities, without claiming formal compliance [R3].
+## Scope and operating limits
 
-The cryptography library's Fernet recipe supplies authenticated encryption rather than a custom cryptographic construction [R4]. PyOTP implements TOTP and identifies replay rejection and throttling as necessary integration controls [R5]. The research register explains the selected sources and the limits of each security claim.
+| Limit or capability | Implemented value |
+| --- | --- |
+| Maximum upload size | 5 MiB per file |
+| Per-account storage | 500,000,000 bytes (500 MB decimal) |
+| Per-account file count | 200 files |
+| Self-registration | Maximum five accounts by default; configurable |
+| Image bounds | Decoder checks and a 16-megapixel limit |
+| PDF bounds | Up to ten pages for bounded reconstruction/OCR paths |
+| Share code | 96 random bits, 15-minute expiry, one successful redemption |
+| Storage | Private encrypted file blobs; SQLite metadata and access records |
 
-## Existing approach and proposed system
+The stored object may differ from the uploaded original. PDF reconstruction removes searchable text, signatures, links, forms, attachments and original metadata. DOCX reconstruction preserves plain paragraphs but not images, formatting, macros, fields or embedded objects. CSV formula-like values are prefixed with an apostrophe. HTML, XML and SVG are rebuilt under restrictive policies. Users should retain an original copy when those properties matter.
 
-The comparison below describes a basic educational upload baseline, not a measured assessment of a specific commercial service.
+## Existing baseline and proposed solution
 
-| Aspect | Basic upload baseline | Proposed implementation |
+The following comparison describes a basic educational upload design, not a measured comparison with a named product.
+
+| Concern | Basic upload baseline | SecureVault approach |
 | --- | --- | --- |
-| Type check | Filename extension only | Extension, declared MIME, signature and decoder |
-| Storage | Original filename in public folder | Random ID in private encrypted storage |
-| Privacy | Uploaded metadata retained | Re-encoded images with metadata removed |
-| Access | Direct file URL | Authenticated owner check on every request |
-| Resource control | No explicit quota | Per-file, pixel, account-byte and file-count limits |
-| Accountability | Minimal logs | Per-user activity with integrity verification |
-| Authentication | Password only | Password with optional TOTP and revocable sessions |
+| File identity | Trust extension or MIME | Compare claims with bytes and parser behavior |
+| Input size | No enforced boundary | Request, file, parser, page and image bounds |
+| Stored content | Save original under user filename | Reconstruct/normalize and assign random internal ID |
+| Metadata | Preserve image metadata | Re-encode supported images; remove embedded metadata |
+| Access | Predictable direct path | Authenticated owner checks on each file action |
+| Storage privacy | Public or plaintext folder | Fernet-encrypted blobs in a private data directory |
+| Detection | No local threat indicators | ClamAV, local YARA-X rules and optional SHA-256 denylist |
+| Image documents | Upload photo as-is | Optional OpenCV page detection and perspective correction |
+| Scanned text | Not inspected | Local Tesseract OCR can feed text into DLP |
+| Sharing | Public link or direct path | Hashed, expiring, revocable and single-use code |
 
-## Scope and modules
+## Users and modules
 
-The proposed modules are account registration and sign-in, session management, optional two-factor authentication, file validation and normalization, optional antivirus integration, encryption and storage, authorized download and deletion, controlled sharing, audit logging, and the web interface. Deployment assets include a Waitress entry point, container configuration and continuous-integration checks.
+The primary user is an authenticated owner uploading synthetic or non-sensitive documents for a small file-vault demonstration. A recipient may redeem a share code when the owner’s inspection policy allows sharing. The operator installs and maintains local inspection tools; the operator is outside the application’s cryptographic trust boundary because the server holds the file keys.
 
-The initial release excludes PDF and Office document processing, SVG, archives, executables, unrestricted public links, administrator browsing of user files, password recovery, cloud hosting and machine-learning malware detection. These are separate extensions, not implied capabilities. Metadata stripping applies to supported images, not arbitrary text content. A recipient holding an explicitly issued share code is authorized for that code's permitted download; files otherwise remain private.
-
-## Interface and interaction design
-
-The landing page will combine neobrutalism and neoclassical typography: bold outlines, offset shadows and geometric elements paired with serif headings, generous spacing and a restrained editorial composition. The design will be original, using the supplied references for inspiration rather than reproducing their layouts or branding.
-
-The authenticated workspace will prioritize a clear sidebar, searchable file table, upload controls, storage usage, file details and sharing management. Arrow and transfer animations will communicate movement and progress, with reduced-motion support. Progress indicators must reflect actual transfer or processing states rather than fabricated percentages. Keyboard access, labeled forms and readable error messages will remain usable without animation.
-
-## Controlled sharing design
-
-An authenticated owner can issue a random 96-bit share code for a selected file. The proposed policy permits one download within 15 minutes and allows the owner to revoke the code sooner. The database stores only a hash of the code. Recipients enter the code through a rate-limited form; the server checks expiry, revocation and usage, verifies file integrity and atomically consumes the code before delivery. Codes are bearer credentials and must be sent through a trusted channel. They are not included in application audit details or ordinary download URLs.
-
-The sharing test plan covers successful redemption, invalid codes, expiry, reuse, revocation, cross-owner management attempts and concurrent redemption. The ability to share deliberately changes the authorization model and must be evaluated independently from owner-only downloads.
+| Module | Responsibility |
+| --- | --- |
+| Account and session management | Registration, sign-in, logout, optional TOTP and session revocation |
+| Upload validation | Safe names, MIME agreement, signatures, decoding and limits |
+| Content processing | Image normalization, OpenCV option and bounded document reconstruction |
+| Security inspection | ClamAV, YARA-X, hash policy, OCR and text DLP outcomes |
+| Encrypted storage | Random blob identifiers, authenticated encryption and integrity verification |
+| Controlled sharing | Issue, expire, revoke and atomically redeem one-time codes |
+| Audit and reporting | HMAC-linked events and owner-only per-file inspection report |
+| User interface | Landing page, vault, upload progress, file actions and report views |
 
 ## Functional requirements
 
 | ID | Requirement | Acceptance condition |
 | --- | --- | --- |
-| FR01 | Register and authenticate an account | Valid credentials succeed; invalid input is rejected |
-| FR02 | Upload allowed content | TXT, PNG and JPEG pass their respective validation rules |
-| FR03 | Reject unsafe requests | Invalid type, structure, name or size creates no file record |
-| FR04 | Store and retrieve private files | Ciphertext is stored; direct downloads require ownership |
-| FR05 | Remove image metadata | Downloaded image excludes test EXIF and trailing markers |
-| FR06 | Manage account security | TOTP, logout and all-device revocation behave as documented |
-| FR07 | Inspect activity | User sees only their events and an audit-integrity result |
-| FR08 | Integrate antivirus | Scanner rejection/error prevents storage; absent scanner is clearly disclosed |
-| FR09 | Share a selected file by code | Only a valid, unused, unexpired and unrevoked code permits redemption |
+| FR01 | Register and authenticate | Valid account can sign in; invalid credentials fail safely; account cap is enforced |
+| FR02 | Upload supported content | Valid allowlisted input passes the defined checks and policy |
+| FR03 | Reject invalid content | Unsupported, malformed, mismatched or over-limit input is not stored |
+| FR04 | Inspect uploaded files | Reports distinguish validation, antivirus, YARA-X, OCR and DLP outcomes |
+| FR05 | Normalize and reconstruct | Image metadata and active document features are removed according to format policy |
+| FR06 | Store and retrieve privately | Accepted bytes are encrypted; retrieval requires ownership and valid integrity |
+| FR07 | Manage account security | Logout, revocation and optional TOTP replay protection work as documented |
+| FR08 | Record user activity | Owner sees their activity and an explicit HMAC-chain status |
+| FR09 | Share a selected file | Only a valid, permitted, unused and unexpired code allows one redemption |
 
 ## Nonfunctional requirements
 
-The interface must support keyboard operation, visible labels and small-screen layouts. Data must persist across normal restarts. SQL statements involving user input must use parameters. Files must remain inaccessible through the static-file route. Security errors must not expose stack traces or private keys. The system targets a single small deployment; performance and concurrency must be measured before widening that scope. Tests must use isolated data and preserve the live vault.
+The application must use parameterized database operations, keep file bytes outside a public static directory, apply bounded processing and avoid logging raw file contents or matched sensitive values. Forms should have visible labels, keyboard-operable controls, understandable errors and reduced-motion behavior. Per-file and per-account limits must be enforced server-side. Security failures must not be represented as successful checks. Private runtime data and generated keys must remain outside the source repository.
 
-## Technology and resource requirements
+## Technical design
 
-| Area | Selection |
+| Area | Technology and role |
 | --- | --- |
-| Backend | Python 3.12, Flask 3.1.3, Waitress 3.0.2 |
-| Frontend | Jinja templates, HTML5, CSS, small JavaScript enhancements |
-| Persistence | SQLite with foreign keys, WAL mode and parameterized queries |
-| File processing | Pillow 12.3.0; explicit PNG and JPEG signatures |
-| Cryptography | cryptography 50.0.1 Fernet, SHA-256, HMAC-SHA-256, Werkzeug scrypt |
-| Authentication | Flask-WTF CSRF, Flask-Limiter, PyOTP 2.10.0, local QR generation |
-| Testing and delivery | pytest, Docker assets, GitHub Actions, Bandit, pip-audit |
-| Suggested development machine | 64-bit computer, 4 GB RAM, 1 GB free disk, current browser |
+| Application | Python 3.12, Flask 3.1 and Waitress |
+| Interface | Jinja templates, HTML, CSS and JavaScript |
+| Database | SQLite with parameterized queries and foreign-key enforcement |
+| Image/document processing | Pillow, OpenCV, PDFium, `defusedxml` and `nh3` |
+| Authentication | Werkzeug scrypt, Flask-WTF, Flask-Limiter and PyOTP |
+| Encryption and integrity | Fernet, SHA-256 and HMAC-SHA-256 |
+| Local detection | ClamAV and YARA-X; native Tesseract for optional OCR |
+| Verification | pytest, Bandit, pip-audit and GitHub Actions |
 
-The hardware values are planning estimates, not measured minimum requirements. The core local demonstration does not require paid cloud services. Optional antivirus signatures, package installation and hosted automation require network access.
+Files are processed synchronously. A short-lived reconstruction process applies deadlines and bounds but is not an operating-system sandbox. ClamAV is required by default and its local signatures must be maintained. YARA-X signatures are educational local indicators, not a complete threat feed. OCR is subject to language, image-quality and recognition limits. Fernet is server-side encryption at rest and is not end-to-end encryption.
 
-## Feasibility study
+## Secure software development life cycle
 
-Technical feasibility is supported by a small Flask application, SQLite and maintained processing libraries. Economic feasibility comes from using open-source components and local execution; hosting and operating costs depend on deployment. Operational feasibility depends on simple upload and download flows and understandable errors. Schedule feasibility is improved by restricting formats and separating optional integrations from the core pipeline. Privacy feasibility requires avoiding sensitive demonstration data and controlling access to the data directory and backups.
+The project uses an iterative secure SDLC: each phase includes security tasks and produces a reviewable artifact. Phase completion depends on evidence, not elapsed weeks.
 
-## SDLC methodology
-
-The project follows an iterative model with security tasks in every phase. A stage is complete when its output can be reviewed or tested, not simply when code is written.
-
-| Phase | Activities | Deliverable and exit condition |
+| Phase | Activities | Deliverable / review point |
 | --- | --- | --- |
-| Planning | Define problem, stakeholders, scope and constraints | Synopsis with agreed objectives and exclusions |
-| Requirements | Capture use cases, misuse cases and acceptance criteria | SRS and requirement traceability |
-| Analysis and design | Threat model, data flow, schema, trust boundaries | Reviewed architecture, ERD and validation rules |
-| Implementation | Develop modules incrementally and review code | Runnable application and versioned configuration |
-| Verification | Positive, negative, isolation and integrity tests | Test evidence and documented unresolved limitations |
-| Deployment | Configure process, keys, storage, HTTPS and backups | Successful smoke test in the chosen environment |
-| Maintenance | Review dependencies, logs, scanner signatures and recovery | Periodic checks and change-driven regression tests |
+| Planning | Define the upload risk, users, scope and constraints | Synopsis and scope boundaries |
+| Requirements | Specify functional, security and usability conditions | Requirement tables and acceptance criteria |
+| Analysis and design | Identify trust boundaries, misuse cases, data flow and schema | Architecture, DFD, ER diagram and threat analysis |
+| Implementation | Build the app in modules and keep controls server-side | Source code, reviewable configuration and synthetic examples |
+| Verification | Exercise normal, malformed, unauthorized and failure paths | Regression, static-analysis and integration evidence |
+| Maintenance | Review dependencies, local signatures and known limitations | Updated audit record and change-driven regression checks |
 
-## System design overview
+## Verification approach and current result
 
-Browser requests enter Flask through Waitress. Authentication and CSRF checks protect relevant routes. Upload processing moves from bounded input to filename/type checks, image normalization or text validation, optional scanning, quota enforcement and encryption. SQLite stores users, sessions, file metadata, share-code hashes and event records. The private filesystem stores encrypted blobs and key material. Direct downloads require ownership; shared downloads require a valid single-use capability. Both paths require successful decryption and a matching SHA-256 digest. The full report will include the architecture, DFD, ERD, use cases and sequence diagram.
+Automated cases cover authentication, session expiry/revocation, CSRF, file validation, document reconstruction, metadata handling, parser bounds, YARA-X behavior, scanner errors, DLP restrictions, encryption, ownership, file integrity and concurrent share redemption. The local suite most recently completed 93 tests with no failures. Bandit reported no medium/high findings and seven low findings, primarily due to bounded subprocess calls and an XML output serializer import. The full dependency audit found no known advisories in the resolved dependency graph at audit time. Native Tesseract was not installed on the development workstation, so OCR-to-DLP is tested with a controlled OCR response, not a native OCR acceptance run.
 
-## Testing and evaluation
+These results apply to the tested source version and cases. They do not establish that the product is unhackable or certified. A ClamAV EICAR fixture returned an error and is recorded as inconclusive rather than a passed detection.
 
-The evaluation uses isolated pytest fixtures and browser checks. Tests cover valid uploads, false extensions, MIME mismatch, malformed images, metadata removal, oversized files, authorization bypass attempts, missing CSRF tokens, ciphertext corruption, copied-session replay, TOTP replay and audit modification. Scanner return-code tests are controlled integration tests; a real scanner and current signatures must be separately verified before claiming antivirus operation. Test results belong to the exact tested version and do not prove the absence of all vulnerabilities.
+## Feasibility and limitations
 
-## Expected outcome and limitations
+The project is technically feasible as a small Python application with local libraries and no mandatory paid scanning service. Test inputs are bounded and safe synthetic examples are provided. Operational correctness depends on preserving private data and keys, keeping ClamAV signatures current, installing Tesseract for OCR and using non-sensitive demonstration files.
 
-The outcome is a locally runnable file-management application and an academic submission package with a synopsis, report, diagrams, tests, source references and demonstration instructions. The project demonstrates multiple security layers and gives the student concrete behaviors to explain.
-
-Key limitations include shared server-side key storage, no account recovery, optional antivirus, an in-memory single-process rate limiter, and the absence of public-deployment or penetration-test certification. The HMAC audit chain is tamper-evident for retained records but cannot prove that a complete final suffix was not deleted without an independent checkpoint. The full security document records these boundaries and proposed improvements.
+Known limitations include the server’s access to encryption keys, no account recovery, in-memory single-process rate limiting, pattern-based DLP, one antivirus engine, limited local YARA-X rules, no dynamic sandbox, possible OCR misses, and no independent penetration test. An HMAC chain detects edits to retained history but cannot prove that a final suffix was not removed without an external checkpoint. These are explicit future-improvement areas, not hidden capabilities.
 
 ## References
 
-[R1] OWASP. File Upload Cheat Sheet. https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html
+1. OWASP, [File Upload Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html).
+2. OWASP, [Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html).
+3. NIST, [SP 800-218: Secure Software Development Framework](https://csrc.nist.gov/pubs/sp/800/218/final).
+4. Python Cryptographic Authority, [Fernet documentation](https://cryptography.io/en/stable/fernet/).
+5. YARA-X, [Python API documentation](https://virustotal.github.io/yara-x/docs/api/python/).
+6. Tesseract, [documentation](https://tesseract-ocr.github.io/tessdoc/).
 
-[R2] OWASP. Password Storage Cheat Sheet. https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
-
-[R3] NIST. SP 800-218, Secure Software Development Framework Version 1.1. February 2022. https://csrc.nist.gov/pubs/sp/800/218/final
-
-[R4] Python Cryptographic Authority. Fernet documentation. https://cryptography.io/en/stable/fernet/
-
-[R5] PyOTP. Official documentation. https://pyauth.github.io/pyotp/
-
-Web sources consulted during preparation on 16–17 September 2026. Bibliographic details should be converted to the institution's required reference style if necessary.
-
-## OpenCV document photo processing
-
-An implemented optional upload mode detects page edges, corrects perspective and enhances grayscale contrast after the image passes validation. It retains the full frame when no clear boundary is detected. The normalized result continues through optional antivirus and encrypted storage. This feature does not provide OCR or malware detection. OpenCV geometric transformation and CLAHE documentation inform the implementation.
+The [research notes](RESEARCH.md) explain how selected sources relate to design choices. Replace academic placeholders with genuine institutional details before submission.

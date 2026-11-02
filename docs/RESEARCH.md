@@ -19,7 +19,7 @@ Accessed during 16–17 September 2026. Sources establish library behavior and g
 
 ## Implemented advanced features
 
-The application includes image reconstruction, explicit MIME and signature consistency checks, a decompression-bomb boundary, authenticated file encryption, integrity-checked retrieval, optional TOTP with replay prevention, server-side session revocation and a per-user HMAC audit chain. Container and CI configuration are included. Their verification status is recorded separately from code availability.
+The application includes image/document reconstruction, explicit MIME and signature consistency checks, parser and decompression boundaries, authenticated file encryption, integrity-checked retrieval, optional TOTP with replay prevention, server-side session revocation and a per-user HMAC audit chain. CI configuration is included and must be exercised on the published repository. Docker is not part of this build. ClamAV is required by default; Tesseract is a native optional OCR integration.
 
 ## Extension proposals
 
@@ -52,3 +52,5 @@ Add PostgreSQL migrations, a shared rate limiter, a global capacity policy, invi
 At upload, select Scan a document photo with OpenCV for a PNG or JPEG. The option detects a page, corrects perspective and enhances grayscale contrast. When no boundary is detected, it enhances the full frame and explains the fallback. It does not perform OCR or antivirus detection. Save the original locally if you need it: the vault stores the processed result.
 
 Implementation references: OpenCV geometric transformations, https://docs.opencv.org/4.x/da/d6e/tutorial_py_geometric_transformations.html and histogram equalization/CLAHE, https://docs.opencv.org/4.x/d5/daf/tutorial_py_histogram_equalization.html (accessed 20 September 2026).
+
+Local detection uses the [YARA-X Python API](https://virustotal.github.io/yara-x/docs/api/python/) to compile and scan maintained rules. OCR-assisted DLP uses [Tesseract 5](https://tesseract-ocr.github.io/tessdoc/) and PDF pages rendered by PDFium. These references describe the tools; the bundled rules and text checks are deliberately limited and do not claim complete detection.

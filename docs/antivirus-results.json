@@ -1,0 +1,24 @@
+{
+  "timestamp_utc": "2026-09-21T03:41:03.628255+00:00",
+  "engine": "ClamAV 1.5.4/28129/Sun Sep 20 11:56:26 2026",
+  "checks": {
+    "benign": {
+      "expected_exit_code": 0,
+      "actual_exit_code": 0,
+      "passed": true,
+      "diagnostic": ""
+    },
+    "eicar": {
+      "expected_exit_code": 1,
+      "actual_exit_code": 2,
+      "passed": false,
+      "diagnostic": ""
+    },
+    "custom_signature": {
+      "expected_exit_code": 1,
+      "actual_exit_code": 1,
+      "passed": true
+    }
+  },
+  "scope": "Two local integration fixtures; not a malware detection benchmark."
+}

@@ -1,0 +1,8 @@
+SECUREVAULT YARA-X TRAINING FIXTURE
+
+This is inert explanatory text. Do not execute it.
+
+powershell -EncodedCommand AAAA
+[Convert]::FromBase64String(AAAA)
+
+The local PowerShell_Encoded_Command rule should match this combination of strings.
